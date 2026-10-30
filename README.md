@@ -45,6 +45,7 @@ curl -fsSL https://raw.githubusercontent.com/sionic-ai/paper-desktop/main/instal
 - **찾기**: 왼쪽 칸에 검색어(`flash attention`, `"sliding window" mistral`)를 넣으면 arXiv를 앱 안에서 검색합니다. 결과에서 바로 나란히 읽거나 arxiv.org를 기본 브라우저로 열 수 있습니다
 - **AI로 찾기**: 왼쪽 칸의 `AI로 논문 찾기`에 원하는 주제를 말로 적으면 Claude가 arXiv를 검색해 논문 번호와 링크를 추천합니다. 말풍선의 `번역하기`를 누르면 그 논문을 가져와 바로 나란히 읽기로 열고 번역을 시작합니다
 - **불러오기**: arXiv ID나 주소(`1706.03762`, `https://arxiv.org/abs/2310.06825`)는 바로 가져오고, 로컬 PDF 파일도 열 수 있습니다
+- **번역 문체**: 교재처럼 읽히는 합니다체로 번역합니다. 영어 어순을 따르지 않고 한국어 어순으로 다시 짜며, 처음 나오는 전문 용어는 `파국적 망각(catastrophic forgetting)`처럼 영어를 함께 적습니다. 예전 문체로 번역한 논문에는 상단에 `새 문체로 다시 번역` 버튼이 뜨고, 다시 번역하는 동안에도 기존 번역은 그대로 보입니다
 - **나란히 읽기**: 문장 단위로 원문과 번역을 짝지어 보여 줍니다. 상단의 `⇄` 버튼으로 원문과 한국어의 좌우 위치를 바꿀 수 있습니다. 두 칸 사이 경계를 끌면 한쪽을 더 넓게 볼 수 있고, 두 번 누르면 반반으로 돌아갑니다
 - **다크 모드**: 사이드바 왼쪽 아래의 달/해 아이콘으로 라이트와 다크를 바꿉니다. 처음에는 macOS 설정을 따르고, 고른 뒤에는 그 선택이 남습니다
 - **사이드바**: 오른쪽 가장자리를 끌어 너비를 조절하고, 상단 아이콘이나 `⌘B`로 접고 펼칩니다. 아주 좁게 끌어도 접힙니다. 너비와 상태는 다음 실행에도 남습니다
@@ -91,6 +92,7 @@ cargo run --release --features probe --bin nanran-probe -- parse 1706.03762     
 cargo run --release --features probe --bin nanran-probe -- dump paper.pdf          # 블록별 한 줄 출력
 cargo run --release --features probe --bin nanran-probe -- translate 1706.03762 6  # 앞 6개 문단 번역
 cargo run --release --features probe --bin nanran-probe -- job paper.pdf /tmp/lib  # 앱과 같은 전체 번역 작업
+cargo run --release --features probe --bin nanran-probe -- redo <doc-id> /tmp/lib  # 저장된 논문을 새 문체로 다시 번역
 ```
 
 ## 한계
