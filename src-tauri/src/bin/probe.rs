@@ -5,6 +5,7 @@
 //! nanran-probe dump <arxiv-id | file.pdf>             print every block on one line
 //! nanran-probe import <arxiv-id | file.pdf> <dir> [n] save into a library dir with n translated units
 //! nanran-probe search <query> [start]                 run an arXiv search
+//! nanran-probe ask <request>                          run the AI paper finder
 
 use nanran::model::{Block, Builder, Doc};
 use std::sync::atomic::AtomicBool;
@@ -23,6 +24,18 @@ fn load(arg: &str) -> Doc {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let (cmd, target) = (args[1].as_str(), args[2].as_str());
+    if cmd == "ask" {
+        let started = std::time::Instant::now();
+        let a = nanran::recommend::recommend(target, &[]).expect("recommend");
+        println!("{:.1}s  {}", started.elapsed().as_secs_f32(), a.reply);
+        for p in a.picks {
+            println!(
+                "{:<16} {} {} — {}",
+                p.hit.id, p.hit.published, p.hit.title, p.why
+            );
+        }
+        return;
+    }
     if cmd == "search" {
         let start = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(0);
         let p = nanran::search::search(target, start).expect("search");

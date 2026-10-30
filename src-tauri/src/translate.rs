@@ -115,7 +115,7 @@ fn valid(src: &Unit, ko: &Unit) -> bool {
             .all(|(en, k)| placeholders(en) == placeholders(k) && !k.trim().is_empty())
 }
 
-fn extract_json(text: &str) -> Option<&str> {
+pub fn extract_json(text: &str) -> Option<&str> {
     let start = text.find('{')?;
     let end = text.rfind('}')?;
     (end > start).then(|| &text[start..=end])
@@ -151,8 +151,18 @@ fn child_path(claude: &Path) -> String {
     dirs.join(":")
 }
 
-/// Runs one Claude call. Returns the model's text reply.
+/// Runs one translation call. Returns the model's text reply.
 pub fn run_claude(claude: &Path, input: &str, cancel: &AtomicBool) -> Result<String, String> {
+    run_claude_with(claude, SYSTEM_PROMPT, input, cancel)
+}
+
+/// Runs one isolated Claude call with the given system prompt. Returns the model's text reply.
+pub fn run_claude_with(
+    claude: &Path,
+    system_prompt: &str,
+    input: &str,
+    cancel: &AtomicBool,
+) -> Result<String, String> {
     let dir = private_dir()?;
     let mut cmd = Command::new(claude);
     cmd.env_clear()
@@ -186,7 +196,7 @@ pub fn run_claude(claude: &Path, input: &str, cancel: &AtomicBool) -> Result<Str
             "--max-turns",
             "1",
             "--system-prompt",
-            SYSTEM_PROMPT,
+            system_prompt,
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

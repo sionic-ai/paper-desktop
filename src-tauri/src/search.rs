@@ -8,7 +8,7 @@ const MAX_FEED: u64 = 4 * 1024 * 1024;
 const ATOM: &str = "http://www.w3.org/2005/Atom";
 const ARXIV: &str = "http://arxiv.org/schemas/atom";
 
-#[derive(Debug, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Hit {
     /// Identifier without version, e.g. `1706.03762` or `hep-th/9901001`.
@@ -130,6 +130,24 @@ pub fn parse_feed(xml: &str) -> Result<Page, String> {
 
 /// Searches arXiv. An arXiv ID or URL looks the paper up directly; anything else is a keyword search.
 pub fn search(input: &str, start: usize) -> Result<Page, String> {
+    search_n(input, start, PAGE)
+}
+
+/// Looks several papers up by ID in one request. Unknown IDs are simply absent from the result.
+pub fn lookup(ids: &[String]) -> Result<Vec<Hit>, String> {
+    let ids: Vec<&str> = ids.iter().map(|i| strip_version(i)).collect();
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut url = url::Url::parse("https://export.arxiv.org/api/query").expect("static url");
+    url.query_pairs_mut()
+        .append_pair("id_list", &ids.join(","))
+        .append_pair("max_results", &ids.len().to_string());
+    fetch_page(url).map(|p| p.hits)
+}
+
+/// Keyword search with a custom page size.
+pub fn search_n(input: &str, start: usize, max: usize) -> Result<Page, String> {
     let mut url = url::Url::parse("https://export.arxiv.org/api/query").expect("static url");
     if let Some(id) = arxiv::parse_id(input) {
         // The API answers 500 for versioned old-style IDs (hep-th/9901001v2), so look up the paper itself.
@@ -141,8 +159,12 @@ pub fn search(input: &str, start: usize) -> Result<Page, String> {
             .append_pair("search_query", &q)
             .append_pair("sortBy", "relevance")
             .append_pair("start", &start.to_string())
-            .append_pair("max_results", &PAGE.to_string());
+            .append_pair("max_results", &max.to_string());
     }
+    fetch_page(url)
+}
+
+fn fetch_page(url: url::Url) -> Result<Page, String> {
     let resp = arxiv::client()
         .get(url)
         .send()

@@ -19,6 +19,7 @@ fn main() {
             nanran::commands::open_arxiv,
             nanran::commands::open_pdf,
             nanran::commands::arxiv_search,
+            nanran::commands::ai_recommend,
             nanran::commands::open_arxiv_page,
             nanran::commands::translation_start,
             nanran::commands::translation_status,

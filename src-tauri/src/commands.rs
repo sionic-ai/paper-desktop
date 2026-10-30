@@ -2,7 +2,7 @@
 
 use crate::library::{Library, Meta};
 use crate::model::{self, Doc};
-use crate::{arxiv, pdf, search, translate};
+use crate::{arxiv, pdf, recommend, search, translate};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -93,6 +93,15 @@ pub async fn open_arxiv(state: State<'_, Arc<AppState>>, input: String) -> Resul
 #[tauri::command]
 pub async fn arxiv_search(query: String, start: usize) -> Result<search::Page, String> {
     blocking(move || search::search(&query, start)).await
+}
+
+/// AI paper finder: Claude plans arXiv searches for the request, then picks from real results.
+#[tauri::command]
+pub async fn ai_recommend(
+    request: String,
+    history: Vec<recommend::Turn>,
+) -> Result<recommend::Answer, String> {
+    blocking(move || recommend::recommend(&request, &history)).await
 }
 
 /// Opens the paper's abstract page on arxiv.org in the default browser. Only arXiv IDs are accepted,
