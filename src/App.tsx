@@ -143,7 +143,7 @@ export function App() {
             <li key={p.id} className={doc?.id === p.id ? 'active' : ''}>
               <button className="paper" onClick={() => void open(p.id, false)} title={p.title}>
                 <span className="t">{p.title}</span>
-                <span className="src">{p.source}</span>
+                <span className="src">{p.source.split('/').pop()}</span>
               </button>
               <button className="x" onClick={() => void remove(p.id)} aria-label={`${p.title} 삭제`}>×</button>
             </li>
