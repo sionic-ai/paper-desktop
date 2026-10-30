@@ -5,8 +5,12 @@ import { dragSplit, stored } from './resize'
 
 type Ko = Record<string, string[]>
 
-function Sentences({ unit, lang, math, ko }: { unit: Unit; lang: 'en' | 'ko'; math: string[]; ko: Ko }) {
+function Sentences({ unit, lang, math, ko, heading }: { unit: Unit; lang: 'en' | 'ko'; math: string[]; ko: Ko; heading?: boolean }) {
   const translated = ko[String(unit.id)]
+  if (lang === 'ko' && !translated && heading) {
+    // Until a heading is translated, repeat the original so both columns always show it.
+    return <span className="untranslated" dangerouslySetInnerHTML={{ __html: inline(unit.sentences.join(' '), math) }} />
+  }
   if (lang === 'ko' && !translated) {
     return <span className="pending" aria-label="번역 전">{unit.sentences.map((_, i) => <i key={i} />)}</span>
   }
@@ -28,7 +32,7 @@ function Pair({ unit, math, ko, as: Tag, className }: { unit: Unit; math: string
   return (
     <div className={`row ${className ?? ''}`}>
       <Tag className="en" lang="en"><Sentences unit={unit} lang="en" math={math} ko={ko} /></Tag>
-      <Tag className="ko" lang="ko"><Sentences unit={unit} lang="ko" math={math} ko={ko} /></Tag>
+      <Tag className="ko" lang="ko"><Sentences unit={unit} lang="ko" math={math} ko={ko} heading={Tag.startsWith('h')} /></Tag>
     </div>
   )
 }

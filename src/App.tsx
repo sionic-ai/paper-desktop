@@ -228,8 +228,8 @@ export function App() {
       if (startTranslation === 'redo') await api.retranslate(id)
       else if (startTranslation) await api.translate(id)
       let s = await api.status(id)
-      // Papers translated before headings were translated: fill in just the headings.
-      if (!s.running && !s.outdated && onlyHeadingsMissing(d, s.units)) {
+      // Papers translated before headings were translated (in any style): fill in just the headings.
+      if (!s.running && onlyHeadingsMissing(d, s.units)) {
         await api.translate(id)
         s = await api.status(id)
       }

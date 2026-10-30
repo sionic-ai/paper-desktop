@@ -201,6 +201,7 @@ button:disabled { cursor: default; opacity: .5; }
 .pending i { display: block; height: .8em; margin: .55em 0; border-radius: 4px; background: var(--pending); animation: shimmer 1.6s ease-in-out infinite; }
 .pending i:last-child { width: 60%; }
 .heading .pending i { height: .7em; width: 40%; }
+.untranslated { color: var(--muted); }
 @keyframes shimmer { 50% { opacity: .55; } }
 
 .wide { margin: 0 0 1em; }
