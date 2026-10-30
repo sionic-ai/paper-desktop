@@ -4,6 +4,54 @@ import { api, arxivDocId, arxivIdOf, errorText, looksLikeArxivId, type Doc, type
 import { Reader } from './Reader'
 import { SearchResults, type SearchState } from './Search'
 import { AiChat, type ChatState } from './Ai'
+import { FloatingAssistant, SelectionAsk, useAsk } from './Assistant'
+
+const UPDATE_EVERY = 3 * 60 * 60 * 1000
+
+/** Shown at the bottom of the sidebar only when a newer release exists. */
+function UpdateButton() {
+  const [latest, setLatest] = useState<string | null>(null)
+  const [installing, setInstalling] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const check = () =>
+      api
+        .updateCheck()
+        .then(u => setLatest(u.available ? u.latest ?? '' : null))
+        .catch(() => {})
+    void check()
+    const timer = setInterval(check, UPDATE_EVERY)
+    return () => clearInterval(timer)
+  }, [])
+
+  if (latest === null) return null
+  const v = latest ? `v${latest.replace(/^v/, '')}` : ''
+
+  const install = async () => {
+    setInstalling(true)
+    setError(null)
+    try {
+      await api.updateInstall()
+    } catch (err) {
+      setError(errorText(err))
+      setInstalling(false)
+    }
+  }
+
+  return (
+    <div className="update">
+      <button className="update-btn" onClick={() => void install()} disabled={installing} title={`새 버전${v && ` ${v}`}이 나왔어요. 누르면 설치하고 다시 열어요`}>
+        {installing ? (
+          <><span className="update-spin" aria-hidden="true" /> 업데이트하는 중…</>
+        ) : (
+          <><span className="update-glyph" aria-hidden="true">↻</span> 업데이트{v && ` ${v}`}</>
+        )}
+      </button>
+      {error && <div className="update-error" role="alert">{error}</div>}
+    </div>
+  )
+}
 
 type Ko = Record<string, string[]>
 
@@ -46,6 +94,9 @@ export function App() {
     })
   const openSeq = useRef(0)
   const searchSeq = useRef(0)
+  // Questions are about the paper on screen; search results and the welcome page ask without one.
+  const shownDoc = view === 'doc' ? doc : null
+  const assistant = useAsk(shownDoc?.id ?? null)
 
   const refreshList = useCallback(() => api.list().then(setPapers).catch(() => {}), [])
   useEffect(() => void refreshList(), [refreshList])
@@ -243,6 +294,7 @@ export function App() {
           ))}
           {papers.length === 0 && <li className="empty">아직 연 논문이 없어요</li>}
         </ul>
+        <UpdateButton />
       </aside>
 
       <main className="main">
@@ -320,6 +372,12 @@ export function App() {
           )
         )}
       </main>
+      {view !== 'ai' && (
+        <>
+          <FloatingAssistant ask={assistant} docTitle={shownDoc?.title ?? null} />
+          <SelectionAsk busy={assistant.loading} resetKey={`${view}:${doc?.id ?? ''}`} onAsk={(q, quote) => assistant.send(q, quote)} />
+        </>
+      )}
     </div>
   )
 }

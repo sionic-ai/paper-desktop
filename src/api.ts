@@ -46,7 +46,12 @@ export const api = {
   openPdf: () => invoke<Meta | null>('open_pdf'),
   translate: (id: string) => invoke<void>('translation_start', { id }),
   status: (id: string) => invoke<Status>('translation_status', { id }),
-  cancel: (id: string) => invoke<void>('translation_cancel', { id })
+  cancel: (id: string) => invoke<void>('translation_cancel', { id }),
+  updateCheck: () => invoke<{ current: string; latest: string | null; available: boolean }>('update_check'),
+  /** Runs the installer detached; it quits this app, replaces it and reopens the new version. */
+  updateInstall: () => invoke<void>('update_install'),
+  ask: (question: string, quote: string | null, docId: string | null, history: { role: 'user' | 'assistant'; text: string }[]) =>
+    invoke<{ reply: string }>('ask_claude', { question, quote, docId, history })
 }
 
 export function errorText(e: unknown): string {
