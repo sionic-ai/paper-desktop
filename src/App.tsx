@@ -36,6 +36,12 @@ export function App() {
   const [search, setSearch] = useState<SearchState | null>(null)
   const [view, setView] = useState<'doc' | 'search'>('doc')
   const [fetchingId, setFetchingId] = useState<string | null>(null)
+  const [swapped, setSwapped] = useState(() => localStorage.getItem('nanran.swapped') === '1')
+  const toggleSwap = () =>
+    setSwapped(s => {
+      localStorage.setItem('nanran.swapped', s ? '0' : '1')
+      return !s
+    })
   const openSeq = useRef(0)
   const searchSeq = useRef(0)
 
@@ -206,6 +212,11 @@ export function App() {
       <main className="main">
         <header className="bar" onMouseDown={dragWindow}>
           <div className="bar-title" onMouseDown={dragWindow}>{view === 'search' ? 'arXiv 검색' : doc?.title ?? ''}</div>
+          {view === 'doc' && doc && (
+            <button className="bar-link" onClick={toggleSwap} title="원문과 한국어 칸의 좌우 위치를 바꿔요">
+              ⇄ {swapped ? '원문을 왼쪽으로' : '한국어를 왼쪽으로'}
+            </button>
+          )}
           {view === 'doc' && doc && arxivIdOf(doc.id) && (
             <button className="bar-link" onClick={() => openWeb(arxivIdOf(doc.id)!)} title="기본 브라우저로 arxiv.org 열기">
               arxiv.org ↗
@@ -241,7 +252,7 @@ export function App() {
             onMore={() => void runSearch(search.query, search.hits.length)}
           />
         ) : doc ? (
-          <Reader doc={doc} ko={ko} />
+          <Reader doc={doc} ko={ko} swapped={swapped} />
         ) : (
           !busy && (
             <div className="welcome">

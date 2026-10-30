@@ -101,7 +101,7 @@ const KoSlice = memo(
   (a, b) => a.block === b.block && unitIds(a.block).every(id => a.ko[String(id)] === b.ko[String(id)])
 )
 
-export function Reader({ doc, ko }: { doc: Doc; ko: Ko }) {
+export function Reader({ doc, ko, swapped }: { doc: Doc; ko: Ko; swapped: boolean }) {
   const root = useRef<HTMLDivElement>(null)
   const style = useRef<HTMLStyleElement>(null)
 
@@ -129,11 +129,11 @@ export function Reader({ doc, ko }: { doc: Doc; ko: Ko }) {
   }, [])
 
   return (
-    <div className="reader" ref={root}>
+    <div className={swapped ? 'reader swapped' : 'reader'} ref={root}>
       <style ref={style} />
       <div className="cols-head">
-        <span>원문</span>
-        <span>한국어</span>
+        <span className="en">원문</span>
+        <span className="ko">한국어</span>
       </div>
       {doc.blocks.map((block, i) => (
         <KoSlice key={i} block={block} math={doc.math} ko={sliceKo(ko, unitIds(block))} />

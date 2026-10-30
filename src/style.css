@@ -115,6 +115,8 @@ button:disabled { cursor: default; opacity: .5; }
 }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
 .row > * { margin: 0 0 1em; min-width: 0; }
+/* Swap button: Korean moves to the left column, English to the right. */
+.reader.swapped .row > .en, .reader.swapped .cols-head > .en { order: 2; }
 .en { font-size: var(--en-size); line-height: 1.75; color: #45443f; }
 .ko { font-size: var(--ko-size); line-height: 1.75; word-break: keep-all; color: #3a3935; }
 .s { border-radius: 3px; transition: background .08s; }
