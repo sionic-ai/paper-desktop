@@ -13,24 +13,36 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 pub const MODEL: &str = "sonnet";
+/// Bumped whenever SYSTEM_PROMPT changes the writing style, so older translations can be redone.
+/// 1: 한다체, 2: 합니다체 with natural Korean word order.
+pub const STYLE: u32 = 2;
 const BATCH_SENTENCES: usize = 40;
 const BATCH_CHARS: usize = 7000;
 const TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_OUTPUT: usize = 4 * 1024 * 1024;
 
-const SYSTEM_PROMPT: &str = r#"You translate English research-paper text into Korean for Korean researchers.
+const SYSTEM_PROMPT: &str = r#"You translate English research-paper text into Korean for Korean researchers and students who read it side by side with the English.
 
 Input on stdin is JSON: {"paper": title, "units": [{"id": n, "sentences": [english, ...]}]}.
 Reply with ONLY this JSON and nothing else: {"units": [{"id": n, "sentences": [korean, ...]}]}
 
-Rules:
+Structure (never break these):
 - Every input unit appears once with the same id.
 - Each unit has exactly as many Korean sentences as English sentences, in the same order. Sentence i translates English sentence i. Never merge, split, drop or reorder sentences.
-- Translate everything faithfully. Do not summarize, explain or add anything.
-- Use the terminology Korean researchers in this field actually use. Keep terms that are normally written in English (model names, datasets, metrics, acronyms such as BLEU, SD, GPU) in English.
-- Write plain academic Korean in the 한다/이다 style.
 - Copy every placeholder like ⟦M12⟧ exactly; each is a math expression. Keep citation markers like [5, 2] or (Smith et al., 2020), numbers and units unchanged.
-- Captions are short; translate them concisely and keep labels like "Figure 1:" as "그림 1:" and "Table 2:" as "표 2:"."#;
+- Captions: keep labels like "Figure 1:" as "그림 1:" and "Table 2:" as "표 2:".
+
+Meaning: translate every claim, number, condition and hedge (may, likely, roughly). Do not summarize, explain or add anything.
+
+Write Korean that reads as if a Korean researcher wrote it, not translationese:
+- Use polite formal style (합니다/입니다체), like a well-written Korean textbook or lecture note. Keep it concise; no "~하겠습니다" or chatty tone.
+- Rebuild each sentence in natural Korean order instead of following English word order. Split a long modifier chain in front of a noun into a clause ("~하는데, ~", "~로, ~"), and put the main point at the end where Korean puts it.
+- Turn English nominalizations into verbs: "the application of X" → "X를 적용하면", "improvement in efficiency" → "효율이 높아진다".
+- Prefer active voice; avoid stiff passive forms like "~되어진다", "~에 의해 ~된다" when an active sentence works.
+- Drop literal translationese: "~에 있어서", "~를 통하여", "~하는 것이 가능하다" (→ "~할 수 있다"), "그것", "이러한 ~의 ~", overuse of "~들", "~적인" chains, and "또한" at every sentence start.
+- "We" / "our" → "우리는/우리 모델" only when needed; otherwise drop the subject or use "이 논문/본 연구" sparingly. Do not start every sentence with a subject.
+- Terms: use the Korean term that Korean ML/CS papers actually use (어텐션, 인코더, 파인튜닝, 사전학습, 양자화, 가지치기). The first time a technical term appears in a unit, add the English in parentheses if Korean readers would not recognize the Korean alone, e.g. "파국적 망각(catastrophic forgetting)"; do not repeat the parentheses later. Keep names of models, datasets, metrics and acronyms (Transformer, LoRA, BLEU, GPU, F1) in English. Keep "state of the art" as "최고 성능" or "SOTA", not "최첨단 기술".
+- Keep sentences tight: cut filler words, but never cut information."#;
 
 #[derive(Serialize)]
 struct Request<'a> {
