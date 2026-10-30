@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { Channel, invoke } from '@tauri-apps/api/core'
 
 export type Unit = { id: number; sentences: string[] }
 
@@ -50,8 +50,20 @@ export const api = {
   updateCheck: () => invoke<{ current: string; latest: string | null; available: boolean }>('update_check'),
   /** Runs the installer detached; it quits this app, replaces it and reopens the new version. */
   updateInstall: () => invoke<void>('update_install'),
-  ask: (question: string, quote: string | null, docId: string | null, history: { role: 'user' | 'assistant'; text: string }[]) =>
-    invoke<{ reply: string }>('ask_claude', { question, quote, docId, history })
+  /** `onDelta` gets each piece of the answer as Claude writes it; the promise resolves with the full answer. */
+  ask: (
+    question: string,
+    quote: string | null,
+    docId: string | null,
+    history: { role: 'user' | 'assistant'; text: string }[],
+    onDelta: (text: string) => void
+  ) => {
+    const onEvent = new Channel<{ kind: 'delta'; text: string }>()
+    onEvent.onmessage = e => {
+      if (e.kind === 'delta') onDelta(e.text)
+    }
+    return invoke<{ reply: string }>('ask_claude', { question, quote, docId, history, onEvent })
+  }
 }
 
 export function errorText(e: unknown): string {

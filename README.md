@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/sionic-ai/paper-desktop/main/instal
 - **AI로 찾기**: 왼쪽 칸의 `AI로 논문 찾기`에 원하는 주제를 말로 적으면 Claude가 arXiv를 검색해 논문 번호와 링크를 추천합니다. 말풍선의 `번역하기`를 누르면 그 논문을 가져와 바로 나란히 읽기로 열고 번역을 시작합니다
 - **불러오기**: arXiv ID나 주소(`1706.03762`, `https://arxiv.org/abs/2310.06825`)는 바로 가져오고, 로컬 PDF 파일도 열 수 있습니다
 - **나란히 읽기**: 문장 단위로 원문과 번역을 짝지어 보여 줍니다. 상단의 `⇄` 버튼으로 원문과 한국어의 좌우 위치를 바꿀 수 있습니다
-- **물어보기**: 오른쪽 아래 떠 있는 ✦ 버튼을 누르고 질문을 적어 Enter를 치면 대화창이 열리고, Claude가 열린 논문을 근거로 답합니다. 본문을 드래그하면 작은 입력창이 떠서 질문을 적고 Enter(또는 ↵ 버튼)로 그 부분과 함께 보낼 수 있습니다. 입력하거나 스크롤해도 고른 부분은 표시된 채 남습니다
+- **물어보기**: 오른쪽 아래 떠 있는 ✦ 버튼을 누르고 질문을 적어 Enter를 치면 대화창이 열리고, Claude가 열린 논문을 근거로 답합니다. 첫 글자가 나오기 전까지는 Claude Code처럼 `✻ 생각하는 중…` 상태가 보이고, 답은 쓰이는 대로 바로 흘러나옵니다. 본문을 드래그하면 작은 입력창이 떠서 질문을 적고 Enter(또는 ↵ 버튼)로 그 부분과 함께 보낼 수 있습니다. 입력하거나 스크롤해도 고른 부분은 표시된 채 남습니다
 - **업데이트**: 새 릴리스가 나오면 왼쪽 칸 맨 아래에 파란 `업데이트` 버튼이 뜹니다. 누르면 설치 스크립트로 새 버전을 받아 교체하고 다시 엽니다
 - **저장**: 논문과 번역은 `~/Library/Application Support/dev.rlaope.nanran/papers/`에만 저장됩니다
 
@@ -68,7 +68,7 @@ scripts/release.sh       # 유니버설 빌드 후 GitHub 릴리스에 올림 (�
 | arXiv | `src-tauri/src/arxiv.rs` | arXiv HTML(LaTeXML)을 섹션, 문단, 그림, 표, 수식 단위로 파싱합니다. HTML 판이 없으면 PDF로 대신 처리합니다. 그림은 data URL로 임베드합니다. |
 | 검색 | `src-tauri/src/search.rs` | arXiv 공개 API(`export.arxiv.org/api/query`)에 모든 단어가 들어간 논문을 관련도순으로 20개씩 요청하고 Atom 응답을 파싱합니다. 따옴표로 묶은 구절은 붙여서 찾습니다. arxiv.org 열기는 ID만 받아 `https://arxiv.org/abs/<id>`로만 엽니다. |
 | AI 추천 | `src-tauri/src/recommend.rs` | Claude가 요청을 영어 검색어 3개 이내와 확신하는 arXiv ID로 바꾸고, 앱이 arXiv API로 실제 결과를 가져온 뒤 Claude가 그 안에서만 최대 5개를 고릅니다. 후보에 없는 ID는 버리므로 존재하지 않는 논문 링크는 나오지 않습니다. 요청 하나에 Claude 호출 2번과 arXiv 요청 최대 4번이 들어가고 15초 안팎 걸립니다. |
-| 질문 | `src-tauri/src/ask.rs` | 열린 논문을 수식까지 복원한 영어 평문(최대 6만 자, 선택 부분이 뒤쪽이면 그 주변)으로 만들어 선택 문장, 최근 대화 8개와 함께 Claude에 보냅니다. 답은 한국어 평문입니다. |
+| 질문 | `src-tauri/src/ask.rs` | `claude -p --output-format stream-json`으로 답을 조각조각 받아 Tauri Channel로 화면에 흘려 보냅니다. 열린 논문을 수식까지 복원한 영어 평문(최대 6만 자, 선택 부분이 뒤쪽이면 그 주변)으로 만들어 선택 문장, 최근 대화 8개와 함께 Claude에 보냅니다. 답은 한국어 평문입니다. |
 | 업데이트 | `src-tauri/src/update.rs` | `releases/latest`의 리다이렉트 태그로 최신 버전을 확인하고(실패하면 버튼을 숨김), 설치를 누르면 `install.sh`를 앱과 분리된 프로세스로 `NANRAN_DIR=<현재 앱 폴더> NANRAN_NO_CLAUDE=1`과 함께 실행합니다. 기록은 `$TMPDIR/nanran-update.log`에 남습니다. |
 | PDF | `src-tauri/src/pdf.rs` | 텍스트를 추출한 뒤 제목과 번호 붙은 섹션을 복원합니다. 쪽 번호를 제거하고, 줄 끝 하이픈을 문서 어휘를 기준으로 판정해 이어 붙입니다. |
 | 문장 | `src-tauri/src/sentence.rs` | 학술 약어(e.g., Fig., et al. 등)를 고려해 문장을 분할합니다. |

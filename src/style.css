@@ -311,6 +311,29 @@ tr:last-child td { border-bottom: 1px solid #cfcecb; }
 .asst-log .bubble { font-size: 13.5px; line-height: 1.6; padding: 8px 12px; }
 .asst-log .msg.user .bubble { max-width: 88%; }
 .asst-log .msg.bot .bubble { white-space: pre-wrap; }
+/* Claude Code-style status while waiting for the first words. */
+.thinking { padding: 2px 2px 0; font-size: 13px; line-height: 1.55; }
+.thinking-line { display: flex; align-items: baseline; gap: 7px; }
+.thinking-glyph { width: 12px; flex: none; text-align: center; color: var(--accent); font-size: 13px; }
+.thinking-verb {
+  color: var(--accent); background: linear-gradient(90deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 45%, #fff) 50%, var(--accent) 100%);
+  background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  animation: thinking-sheen 1.8s linear infinite;
+}
+.thinking-time { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.thinking-tip { margin: 2px 0 0 5px; color: var(--muted); font-size: 12px; }
+@keyframes thinking-sheen { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+/* A caret at the end of an answer that is still being written. */
+.bubble.streaming > :last-child::after {
+  content: ''; display: inline-block; width: 7px; height: 1.05em; margin-left: 2px; vertical-align: -2px;
+  background: var(--accent); border-radius: 1px; animation: caret 1s steps(1) infinite;
+}
+.bubble.streaming > ul:last-child::after { display: none; }
+.bubble.streaming > ul:last-child > li:last-child::after {
+  content: ''; display: inline-block; width: 7px; height: 1.05em; margin-left: 2px; vertical-align: -2px;
+  background: var(--accent); border-radius: 1px; animation: caret 1s steps(1) infinite;
+}
+@keyframes caret { 50% { opacity: 0; } }
 .asst-p { margin: 0; }
 .asst-p + .asst-p, .asst-p + .asst-list, .asst-list + .asst-p { margin-top: 8px; }
 .asst-list { margin: 0; padding-left: 16px; white-space: normal; }
@@ -357,5 +380,6 @@ tr:last-child td { border-bottom: 1px solid #cfcecb; }
 ::highlight(nanran-quote) { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 
 @media (prefers-reduced-motion: reduce) {
-  .asst-fab, .asst, .asst.expanded, .sel-ask { animation: none; }
+  .asst-fab, .asst, .asst.expanded, .sel-ask, .thinking-verb { animation: none; }
+  .thinking-verb { background: none; -webkit-text-fill-color: currentColor; }
 }

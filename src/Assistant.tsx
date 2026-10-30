@@ -3,7 +3,7 @@ import { api, errorText } from './api'
 
 export type AskMsg =
   | { role: 'user'; text: string; quote: string | null }
-  | { role: 'assistant'; text: string }
+  | { role: 'assistant'; text: string; streaming?: boolean }
   | { role: 'error'; text: string }
 
 export type Ask = {
@@ -40,12 +40,25 @@ export function useAsk(docId: string | null): Ask {
       const id = ++seq.current
       setMessages(ms => [...ms, { role: 'user', text: q, quote }])
       setLoading(true)
+      // The streaming answer is always the last message while this request is current.
+      const write = (f: (m: AskMsg | undefined) => AskMsg | null) =>
+        setMessages(ms => {
+          const last = ms[ms.length - 1]
+          const live = last?.role === 'assistant' && last.streaming ? last : undefined
+          const next = f(live)
+          const base = live ? ms.slice(0, -1) : ms
+          return next ? [...base, next] : base
+        })
       api
-        .ask(q, quote, docId, history)
+        .ask(q, quote, docId, history, d => {
+          if (id === seq.current) write(m => ({ role: 'assistant', text: (m?.text ?? '') + d, streaming: true }))
+        })
         .then(r => {
-          if (id === seq.current) setMessages(ms => [...ms, { role: 'assistant', text: r.reply }])
+          if (id === seq.current) write(() => ({ role: 'assistant', text: r.reply }))
         })
         .catch(err => {
+          // Keep whatever was already written, then say what went wrong.
+          if (id === seq.current) write(m => (m ? { ...m, streaming: false } : null))
           if (id === seq.current) setMessages(ms => [...ms, { role: 'error', text: errorText(err) }])
         })
         .finally(() => {
@@ -62,6 +75,38 @@ export function useAsk(docId: string | null): Ask {
   }, [])
 
   return { messages, loading, open, setOpen, send, reset }
+}
+
+// Like Claude Code's status line: a turning glyph, a playful verb, and the elapsed time.
+const SPIN = ['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '✢']
+const VERBS = ['생각하는 중', '곱씹는 중', '논문 뒤적이는 중', '궁리하는 중', '되새기는 중', '골똘히 보는 중', '정리하는 중', '실마리 찾는 중']
+const TIPS = [
+  '본문을 드래그하면 그 부분만 콕 집어 물어볼 수 있어요',
+  '이어서 물어보면 앞 대화를 기억하고 답해요',
+  'Esc로 창을 닫아도 대화는 남아 있어요',
+  '새 대화를 누르면 처음부터 다시 물어볼 수 있어요',
+]
+
+function Thinking() {
+  const [tick, setTick] = useState(0)
+  const [pick] = useState(() => ({ verb: Math.floor(Math.random() * VERBS.length), tip: Math.floor(Math.random() * TIPS.length) }))
+  useEffect(() => {
+    const t = window.setInterval(() => setTick(n => n + 1), 120)
+    return () => window.clearInterval(t)
+  }, [])
+  // Change the verb every ~4 s so long answers feel alive.
+  const verb = VERBS[(pick.verb + Math.floor(tick / 33)) % VERBS.length]
+  const secs = Math.floor((tick * 120) / 1000)
+  return (
+    <div className="thinking" role="status" aria-live="polite">
+      <div className="thinking-line">
+        <span className="thinking-glyph" aria-hidden="true">{SPIN[tick % SPIN.length]}</span>
+        <span className="thinking-verb">{verb}…</span>
+        {secs > 0 && <span className="thinking-time">({secs}초)</span>}
+      </div>
+      <div className="thinking-tip"><span aria-hidden="true">└ </span>Tip: {TIPS[pick.tip]}</div>
+    </div>
+  )
 }
 
 function SendIcon() {
@@ -85,10 +130,17 @@ export function FloatingAssistant({ ask, docTitle }: { ask: Ask; docTitle: strin
     if (open) box.current?.focus()
   }, [open, expanded])
 
+  // Follow the answer as it streams in, unless the reader scrolled up to look at something.
+  const stick = useRef(true)
+  const last = messages[messages.length - 1]
   useEffect(() => {
     const el = log.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [messages.length, loading, open])
+    if (el && stick.current) el.scrollTop = el.scrollHeight
+  }, [messages.length, last?.text, loading, open])
+  useEffect(() => {
+    stick.current = true
+  }, [messages.length])
+  const waiting = loading && !(last?.role === 'assistant' && last.streaming)
 
   useEffect(() => {
     if (!open) return
@@ -133,7 +185,14 @@ export function FloatingAssistant({ ask, docTitle }: { ask: Ask; docTitle: strin
             <button className="asst-new" onClick={reset}>새 대화</button>
             <button className="asst-close" onClick={() => setOpen(false)} aria-label="닫기">×</button>
           </header>
-          <div className="asst-log" ref={log}>
+          <div
+            className="asst-log"
+            ref={log}
+            onScroll={e => {
+              const el = e.currentTarget
+              stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+            }}
+          >
             {messages.map((m, i) =>
               m.role === 'user' ? (
                 <div key={i} className="msg user">
@@ -144,13 +203,13 @@ export function FloatingAssistant({ ask, docTitle }: { ask: Ask; docTitle: strin
                 </div>
               ) : (
                 <div key={i} className="msg bot">
-                  <div className={`bubble${m.role === 'error' ? ' error-bubble' : ''}`}>{m.role === 'error' ? m.text : <Reply text={m.text} />}</div>
+                  <div className={`bubble${m.role === 'error' ? ' error-bubble' : ''}${m.role === 'assistant' && m.streaming ? ' streaming' : ''}`}>
+                    {m.role === 'error' ? m.text : <Reply text={m.text} />}
+                  </div>
                 </div>
               )
             )}
-            {loading && (
-              <div className="msg bot"><div className="bubble typing">생각하는 중이에요<span className="dots" /></div></div>
-            )}
+            {waiting && <Thinking />}
           </div>
         </>
       )}
