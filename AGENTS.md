@@ -72,7 +72,7 @@ Rules:
 - **Claude only through the CLI.** No API keys and no HTTP calls to Anthropic. `translate::run_claude_with` runs `claude -p` with a scrubbed env, no tools/MCP/settings, in an empty temp dir. Reuse it for new prompts.
 - **Never show model-invented papers.** The AI finder (`recommend.rs`) lets Claude plan queries, fetches real arXiv results, and keeps only picks whose IDs are in those results. Keep that invariant.
 - **Be polite to arXiv.** Keep ≥1 s between API requests (`ARXIV_GAP`).
-- **UI copy and error messages are Korean 해요체**, e.g. `번역을 시작하지 못했어요`. Keep the light, minimal design. The accent color is `--accent` in `src/style.css`.
+- **UI copy and error messages are Korean 해요체**, e.g. `번역을 시작하지 못했어요`. Keep the minimal design. Colors live in CSS variables in `src/style.css` (`--accent` is the accent); light is `:root`, dark is `:root[data-theme='dark']`, so new styles must use variables, not raw hex.
 - The library is plain JSON files under the app data dir. There is no database.
 - Verify UI changes in the running app or with a mocked `window.__TAURI_INTERNALS__` in a browser (`pnpm dev:web`). Run `pnpm build` and `cargo test --lib` before committing.
 - Make small commits, one logical change each. Write commit messages in English, imperative mood.
