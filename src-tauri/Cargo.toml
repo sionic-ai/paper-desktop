@@ -1,0 +1,40 @@
+[package]
+name = "nanran"
+version = "0.1.0"
+description = "Side-by-side Korean paper reader"
+edition = "2024"
+rust-version = "1.85"
+default-run = "nanran"
+
+[lib]
+name = "nanran"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nanran"
+path = "src/main.rs"
+
+[[bin]]
+name = "nanran-probe"
+path = "src/bin/probe.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.6", features = [] }
+
+[dependencies]
+base64 = "0.22"
+pdf-extract = "0.10"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+scraper = "0.24"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tauri = { version = "2.11", features = [] }
+tauri-plugin-dialog = "2"
+url = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true
