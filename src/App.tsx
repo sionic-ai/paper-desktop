@@ -120,7 +120,7 @@ function dragWindow(e: React.MouseEvent) {
 function onlyHeadingsMissing(doc: Doc, ko: Ko): boolean {
   let headingMissing = false
   for (const b of doc.blocks) {
-    if (b.kind === 'heading') headingMissing ||= ko[b.unit.id] === undefined
+    if (b.kind === 'heading') headingMissing ||= b.level > 1 && ko[b.unit.id] === undefined
     else if (b.kind === 'para' && ko[b.unit.id] === undefined) return false
     else if ((b.kind === 'figure' || b.kind === 'table') && b.caption && ko[b.caption.id] === undefined) return false
   }
@@ -358,11 +358,11 @@ export function App() {
     await refreshList()
   }
 
-  // Same units the Rust job translates: headings, paragraphs and captions.
+  // Same units the Rust job translates: section headings, paragraphs and captions.
   const unitIds = useMemo(() => {
     const ids: number[] = []
     for (const b of doc?.blocks ?? []) {
-      if (b.kind === 'heading' || b.kind === 'para') ids.push(b.unit.id)
+      if ((b.kind === 'heading' && b.level > 1) || b.kind === 'para') ids.push(b.unit.id)
       else if ((b.kind === 'figure' || b.kind === 'table') && b.caption) ids.push(b.caption.id)
     }
     return ids

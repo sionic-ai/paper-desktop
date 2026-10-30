@@ -41,6 +41,14 @@ const BlockView = memo(function BlockView({ block, math, ko }: { block: Block; m
   switch (block.kind) {
     case 'heading': {
       const Tag = (['h1', 'h2', 'h3', 'h4'] as const)[Math.min(block.level, 4) - 1] ?? 'h4'
+      if (block.level === 1) {
+        // The paper title stays in English, once across both columns.
+        return (
+          <div className="row heading h1 wide-heading">
+            <h1 lang="en" dangerouslySetInnerHTML={{ __html: inline(block.unit.sentences.join(' '), math) }} />
+          </div>
+        )
+      }
       return <Pair unit={block.unit} math={math} ko={ko} as={Tag} className={`heading ${Tag}`} />
     }
     case 'para':
