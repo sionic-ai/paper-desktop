@@ -1,6 +1,7 @@
-import { Fragment, memo, useEffect, useRef } from 'react'
+import { Fragment, memo, useEffect, useRef, useState } from 'react'
 import type { Block, Doc, Unit } from './api'
 import { inline, tex } from './render'
+import { dragSplit, stored } from './resize'
 
 type Ko = Record<string, string[]>
 
@@ -105,9 +106,35 @@ const KoSlice = memo(
   (a, b) => a.block === b.block && unitIds(a.block).every(id => a.ko[String(id)] === b.ko[String(id)])
 )
 
+const GAP = 48
+const SPLIT_MIN = 0.25
+const SPLIT_MAX = 0.75
+
 export function Reader({ doc, ko, swapped }: { doc: Doc; ko: Ko; swapped: boolean }) {
   const root = useRef<HTMLDivElement>(null)
   const style = useRef<HTMLStyleElement>(null)
+  // Share of the width taken by the left column; drag the gap between the columns to change it.
+  const [split, setSplit] = useState(() => stored('nanran.split', 0.5, SPLIT_MIN, SPLIT_MAX))
+  const resize = (e: React.PointerEvent) => {
+    const el = root.current
+    if (!el) return
+    let r = split
+    dragSplit(
+      e,
+      x => {
+        const box = el.getBoundingClientRect()
+        const pad = parseFloat(getComputedStyle(el).paddingLeft)
+        const inner = box.width - pad * 2 - GAP
+        r = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, (x - box.left - pad - GAP / 2) / inner))
+        el.style.setProperty('--split', String(r))
+      },
+      () => {
+        el.style.setProperty('--split', String(r))
+        localStorage.setItem('nanran.split', r.toFixed(3))
+        setSplit(r)
+      }
+    )
+  }
 
   // Hover highlight writes one CSS rule instead of re-rendering the paper.
   useEffect(() => {
@@ -133,8 +160,20 @@ export function Reader({ doc, ko, swapped }: { doc: Doc; ko: Ko; swapped: boolea
   }, [])
 
   return (
-    <div className={swapped ? 'reader swapped' : 'reader'} ref={root}>
+    <div className={swapped ? 'reader swapped' : 'reader'} ref={root} style={{ '--split': split } as React.CSSProperties}>
       <style ref={style} />
+      <div
+        className="col-resize"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="원문과 한국어 칸 너비"
+        title="끌어서 좌우 너비 조절 · 두 번 눌러 반반으로"
+        onPointerDown={resize}
+        onDoubleClick={() => {
+          localStorage.setItem('nanran.split', '0.5')
+          setSplit(0.5)
+        }}
+      />
       <div className="cols-head">
         <span className="en">원문</span>
         <span className="ko">한국어</span>
