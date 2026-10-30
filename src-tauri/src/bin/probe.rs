@@ -6,6 +6,7 @@
 //! nanran-probe import <arxiv-id | file.pdf> <dir> [n] save into a library dir with n translated units
 //! nanran-probe search <query> [start]                 run an arXiv search
 //! nanran-probe ask <request>                          run the AI paper finder
+//! nanran-probe claude -                               show Claude Code install/login state
 
 use nanran::model::{Block, Builder, Doc};
 use std::sync::atomic::AtomicBool;
@@ -24,6 +25,10 @@ fn load(arg: &str) -> Doc {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let (cmd, target) = (args[1].as_str(), args[2].as_str());
+    if cmd == "claude" {
+        println!("{:?}", nanran::translate::claude_status());
+        return;
+    }
     if cmd == "ask" {
         let started = std::time::Instant::now();
         let a = nanran::recommend::recommend(target, &[]).expect("recommend");

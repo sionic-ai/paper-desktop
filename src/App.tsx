@@ -50,6 +50,18 @@ export function App() {
   const refreshList = useCallback(() => api.list().then(setPapers).catch(() => {}), [])
   useEffect(() => void refreshList(), [refreshList])
 
+  // Translation and AI search need a logged-in Claude Code CLI; say so up front instead of on first use.
+  const [claude, setClaude] = useState<'ok' | 'missing' | 'logout' | null>(null)
+  const checkClaude = useCallback(
+    () => api.claude().then(s => setClaude(!s.installed ? 'missing' : s.loggedIn ? 'ok' : 'logout')).catch(() => {}),
+    []
+  )
+  useEffect(() => {
+    void checkClaude()
+    window.addEventListener('focus', checkClaude)
+    return () => window.removeEventListener('focus', checkClaude)
+  }, [checkClaude])
+
   const open = useCallback(async (id: string, startTranslation: boolean) => {
     const seq = ++openSeq.current
     setError(null)
@@ -264,6 +276,15 @@ export function App() {
             </div>
           )}
         </header>
+        {(claude === 'missing' || claude === 'logout') && (
+          <div className="notice claude-notice" role="status">
+            {claude === 'missing' ? (
+              <>Claude Code가 없어서 번역과 AI 찾기를 쓸 수 없어요. 터미널에서 <code>curl -fsSL https://claude.ai/install.sh | bash</code> 후 <code>claude auth login</code>을 실행해 주세요.</>
+            ) : (
+              <>Claude Code에 로그인되어 있지 않아요. 터미널에서 <code>claude auth login</code>을 실행하면 이 창으로 돌아올 때 자동으로 다시 확인해요.</>
+            )}
+          </div>
+        )}
         {(error || status?.error) && <div className="error" role="alert">{error ?? status?.error}</div>}
         {busy && <div className="notice">{busy}</div>}
         {view === 'ai' ? (

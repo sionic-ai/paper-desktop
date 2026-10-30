@@ -95,6 +95,11 @@ pub async fn arxiv_search(query: String, start: usize) -> Result<search::Page, S
     blocking(move || search::search(&query, start)).await
 }
 
+#[tauri::command]
+pub async fn claude_status() -> Result<translate::ClaudeStatus, String> {
+    blocking(|| Ok(translate::claude_status())).await
+}
+
 /// AI paper finder: Claude plans arXiv searches for the request, then picks from real results.
 #[tauri::command]
 pub async fn ai_recommend(

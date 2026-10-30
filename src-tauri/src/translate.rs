@@ -72,6 +72,48 @@ pub fn find_claude() -> Option<PathBuf> {
     })
 }
 
+/// Login state of the Claude Code CLI, checked with `claude auth status` (no model call).
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeStatus {
+    pub installed: bool,
+    pub logged_in: bool,
+    pub path: Option<String>,
+}
+
+pub fn claude_status() -> ClaudeStatus {
+    let Some(claude) = find_claude() else {
+        return ClaudeStatus {
+            installed: false,
+            logged_in: false,
+            path: None,
+        };
+    };
+    let mut cmd = Command::new(&claude);
+    cmd.env_clear()
+        .env("PATH", child_path(&claude))
+        .env("LANG", "en_US.UTF-8");
+    for key in ["HOME", "USER", "LOGNAME"] {
+        if let Some(v) = std::env::var_os(key) {
+            cmd.env(key, v);
+        }
+    }
+    let logged_in = cmd
+        .args(["auth", "status"])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok())
+        .and_then(|v| v.get("loggedIn").and_then(|b| b.as_bool()))
+        .unwrap_or(false);
+    ClaudeStatus {
+        installed: true,
+        logged_in,
+        path: Some(claude.display().to_string()),
+    }
+}
+
 /// Groups consecutive units into batches small enough for one reliable reply.
 pub fn batches(units: &[Unit]) -> Vec<Vec<Unit>> {
     let mut out: Vec<Vec<Unit>> = Vec::new();
