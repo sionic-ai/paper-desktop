@@ -34,7 +34,11 @@ fn main() {
         // Runs the in-app updater as if the app lived at <exe>, e.g. a test copy's
         // `<dir>/Nanran.app/Contents/MacOS/nanran`.
         let log = std::env::temp_dir().join("nanran-update.log");
-        println!("{:?} log={}", nanran::update::install(std::path::Path::new(&args[2]), &log), log.display());
+        println!(
+            "{:?} log={}",
+            nanran::update::install(std::path::Path::new(&args[2]), &log),
+            log.display()
+        );
         return;
     }
     let (cmd, target) = (args[1].as_str(), args[2].as_str());
@@ -45,15 +49,30 @@ fn main() {
             .join("Library/Application Support/dev.rlaope.nanran/papers");
         let state = std::sync::Arc::new(nanran::AppState::new(dir).expect("state"));
         let started = std::time::Instant::now();
-        let a = nanran::commands::ask_paper(
+        let mut first: Option<f32> = None;
+        let mut pieces = 0usize;
+        let a = nanran::commands::ask_paper_stream(
             &state,
             &args[3],
             args.get(4).map(String::as_str),
             Some(target),
             &[],
+            |d| {
+                use std::io::Write;
+                first.get_or_insert(started.elapsed().as_secs_f32());
+                pieces += 1;
+                eprint!("{d}");
+                let _ = std::io::stderr().flush();
+            },
         )
         .expect("ask");
-        println!("{:.1}s\n{}", started.elapsed().as_secs_f32(), a.reply);
+        eprintln!();
+        println!(
+            "first {:.1}s, done {:.1}s, {pieces} pieces\n{}",
+            first.unwrap_or_default(),
+            started.elapsed().as_secs_f32(),
+            a.reply
+        );
         return;
     }
     if cmd == "claude" {

@@ -198,6 +198,60 @@ pub fn run_claude(claude: &Path, input: &str, cancel: &AtomicBool) -> Result<Str
     run_claude_with(claude, SYSTEM_PROMPT, input, cancel)
 }
 
+/// `claude -p` with every tool, MCP server, setting source and session file disabled, run in
+/// `dir` with a scrubbed environment.
+fn claude_command(claude: &Path, dir: &Path, system_prompt: &str, stream: bool) -> Command {
+    let mut cmd = Command::new(claude);
+    cmd.env_clear()
+        .env("PATH", child_path(claude))
+        .env("TMPDIR", dir)
+        .env("LANG", "en_US.UTF-8");
+    for key in ["HOME", "USER", "LOGNAME"] {
+        if let Some(v) = std::env::var_os(key) {
+            cmd.env(key, v);
+        }
+    }
+    cmd.current_dir(dir)
+        .args(["-p", "--model", MODEL, "--output-format"]);
+    if stream {
+        cmd.args(["stream-json", "--verbose", "--include-partial-messages"]);
+    } else {
+        cmd.arg("json");
+    }
+    cmd.args([
+        "--tools",
+        "",
+        "--disallowedTools",
+        "*",
+        "--strict-mcp-config",
+        "--mcp-config",
+        r#"{"mcpServers":{}}"#,
+        "--setting-sources",
+        "",
+        "--disable-slash-commands",
+        "--no-chrome",
+        "--no-session-persistence",
+        "--max-turns",
+        "1",
+        "--system-prompt",
+        system_prompt,
+    ])
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::null());
+    cmd
+}
+
+fn stopped(cancel: &AtomicBool) -> String {
+    if cancel.load(Ordering::Relaxed) {
+        "취소했어요".to_string()
+    } else {
+        "Claude Code 응답 시간이 초과됐어요".to_string()
+    }
+}
+
+const FAILED: &str = "Claude Code가 실패했어요. 로그인 상태나 사용량 한도를 확인해 주세요";
+
 /// Runs one isolated Claude call with the given system prompt. Returns the model's text reply.
 pub fn run_claude_with(
     claude: &Path,
@@ -206,43 +260,7 @@ pub fn run_claude_with(
     cancel: &AtomicBool,
 ) -> Result<String, String> {
     let dir = private_dir()?;
-    let mut cmd = Command::new(claude);
-    cmd.env_clear()
-        .env("PATH", child_path(claude))
-        .env("TMPDIR", &dir)
-        .env("LANG", "en_US.UTF-8");
-    for key in ["HOME", "USER", "LOGNAME"] {
-        if let Some(v) = std::env::var_os(key) {
-            cmd.env(key, v);
-        }
-    }
-    cmd.current_dir(&dir)
-        .args([
-            "-p",
-            "--model",
-            MODEL,
-            "--output-format",
-            "json",
-            "--tools",
-            "",
-            "--disallowedTools",
-            "*",
-            "--strict-mcp-config",
-            "--mcp-config",
-            r#"{"mcpServers":{}}"#,
-            "--setting-sources",
-            "",
-            "--disable-slash-commands",
-            "--no-chrome",
-            "--no-session-persistence",
-            "--max-turns",
-            "1",
-            "--system-prompt",
-            system_prompt,
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+    let mut cmd = claude_command(claude, &dir, system_prompt, false);
     let result = (|| {
         let mut child = cmd
             .spawn()
@@ -271,11 +289,7 @@ pub fn run_claude_with(
                 let _ = child.wait();
                 let _ = writer.join();
                 let _ = reader.join();
-                return Err(if cancel.load(Ordering::Relaxed) {
-                    "취소했어요".to_string()
-                } else {
-                    "Claude Code 응답 시간이 초과됐어요".to_string()
-                });
+                return Err(stopped(cancel));
             }
             std::thread::sleep(Duration::from_millis(100));
         };
@@ -290,11 +304,124 @@ pub fn run_claude_with(
             }
         })?;
         if envelope.is_error || !status.success() {
-            return Err(
-                "Claude Code가 실패했어요. 로그인 상태나 사용량 한도를 확인해 주세요".into(),
-            );
+            return Err(FAILED.into());
         }
         Ok(envelope.result)
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+/// One line of `--output-format stream-json`.
+#[derive(Debug, PartialEq)]
+enum StreamLine {
+    /// A piece of the reply text as it is generated.
+    Delta(String),
+    /// The final envelope.
+    Done {
+        is_error: bool,
+        result: String,
+    },
+    Other,
+}
+
+fn parse_stream_line(line: &str) -> StreamLine {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+        return StreamLine::Other;
+    };
+    match v["type"].as_str() {
+        Some("stream_event") => {
+            let e = &v["event"];
+            if e["type"] == "content_block_delta" && e["delta"]["type"] == "text_delta" {
+                if let Some(t) = e["delta"]["text"].as_str() {
+                    return StreamLine::Delta(t.to_string());
+                }
+            }
+            StreamLine::Other
+        }
+        Some("result") => StreamLine::Done {
+            is_error: v["is_error"].as_bool().unwrap_or(false),
+            result: v["result"].as_str().unwrap_or_default().to_string(),
+        },
+        _ => StreamLine::Other,
+    }
+}
+
+/// Like [`run_claude_with`], but calls `on_delta` with each piece of the reply as Claude
+/// writes it. Returns the full reply.
+pub fn run_claude_stream(
+    claude: &Path,
+    system_prompt: &str,
+    input: &str,
+    cancel: &AtomicBool,
+    mut on_delta: impl FnMut(&str),
+) -> Result<String, String> {
+    use std::io::BufRead;
+    use std::sync::mpsc;
+    let dir = private_dir()?;
+    let mut cmd = claude_command(claude, &dir, system_prompt, true);
+    let result = (|| {
+        let mut child = cmd
+            .spawn()
+            .map_err(|_| "Claude Code를 실행하지 못했어요".to_string())?;
+        let mut stdin = child.stdin.take().expect("piped stdin");
+        let payload = input.as_bytes().to_vec();
+        let writer = std::thread::spawn(move || {
+            let _ = stdin.write_all(&payload);
+        });
+        let stdout = child.stdout.take().expect("piped stdout");
+        let (tx, rx) = mpsc::channel::<StreamLine>();
+        let reader = std::thread::spawn(move || {
+            let mut read = 0usize;
+            for line in std::io::BufReader::new(stdout).lines() {
+                let Ok(line) = line else { break };
+                read += line.len();
+                if read > MAX_OUTPUT {
+                    break;
+                }
+                let parsed = parse_stream_line(&line);
+                if parsed != StreamLine::Other && tx.send(parsed).is_err() {
+                    break;
+                }
+            }
+        });
+        let started = Instant::now();
+        let mut text = String::new();
+        let mut done: Option<(bool, String)> = None;
+        loop {
+            if cancel.load(Ordering::Relaxed) || started.elapsed() > TIMEOUT {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = writer.join();
+                let _ = reader.join();
+                return Err(stopped(cancel));
+            }
+            match rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(StreamLine::Delta(d)) => {
+                    text.push_str(&d);
+                    on_delta(&d);
+                }
+                Ok(StreamLine::Done { is_error, result }) => done = Some((is_error, result)),
+                Ok(StreamLine::Other) => {}
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        let status = child
+            .wait()
+            .map_err(|_| "Claude Code 상태를 확인하지 못했어요".to_string())?;
+        let _ = writer.join();
+        let _ = reader.join();
+        match done {
+            Some((false, result)) if status.success() => {
+                // The envelope is authoritative; deltas are only for display.
+                Ok(if result.is_empty() { text } else { result })
+            }
+            Some(_) => Err(FAILED.into()),
+            None => Err(
+                "Claude Code가 실패했어요. 터미널에서 `claude`로 로그인했는지 확인해 주세요".into(),
+            ),
+        }
     })();
     let _ = std::fs::remove_dir_all(&dir);
     result
@@ -353,6 +480,27 @@ fn aligned_fallback(src: &Unit, ko: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stream_lines_are_parsed() {
+        let delta = r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"트랜스"}}}"#;
+        assert_eq!(parse_stream_line(delta), StreamLine::Delta("트랜스".into()));
+        let done = r#"{"type":"result","subtype":"success","is_error":false,"result":"전체 답"}"#;
+        assert_eq!(
+            parse_stream_line(done),
+            StreamLine::Done {
+                is_error: false,
+                result: "전체 답".into()
+            }
+        );
+        let start = r#"{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}"#;
+        assert_eq!(parse_stream_line(start), StreamLine::Other);
+        assert_eq!(
+            parse_stream_line(r#"{"type":"system","subtype":"init"}"#),
+            StreamLine::Other
+        );
+        assert_eq!(parse_stream_line("not json"), StreamLine::Other);
+    }
 
     fn unit(id: u32, sentences: &[&str]) -> Unit {
         Unit {

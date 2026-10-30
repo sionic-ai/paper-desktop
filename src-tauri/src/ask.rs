@@ -152,6 +152,17 @@ pub fn ask(
     quote: Option<&str>,
     history: &[Turn],
 ) -> Result<String, String> {
+    ask_stream(doc, question, quote, history, |_| {})
+}
+
+/// [`ask`], calling `on_delta` with each piece of the answer as Claude writes it.
+pub fn ask_stream(
+    doc: Option<&Doc>,
+    question: &str,
+    quote: Option<&str>,
+    history: &[Turn],
+    on_delta: impl FnMut(&str),
+) -> Result<String, String> {
     let question = question.trim();
     if question.is_empty() {
         return Err("질문을 적어 주세요".into());
@@ -160,11 +171,12 @@ pub fn ask(
         "Claude Code CLI를 찾지 못했어요. 설치 후 터미널에서 `claude`로 로그인해 주세요".to_string()
     })?;
     let input = build_input(doc, question, quote, history);
-    let reply = translate::run_claude_with(
+    let reply = translate::run_claude_stream(
         &claude,
         SYSTEM_PROMPT,
         &input.to_string(),
         &AtomicBool::new(false),
+        on_delta,
     )?;
     let reply = reply.trim();
     if reply.is_empty() {

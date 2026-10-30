@@ -114,7 +114,15 @@ pub struct AskReply {
     pub reply: String,
 }
 
+/// Streamed to the frontend while Claude writes an answer.
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum AskEvent {
+    Delta { text: String },
+}
+
 /// Answers a question about the open paper (`doc_id`), optionally about a selected passage.
+/// Pieces of the answer arrive on `on_event` as they are written; the full answer is returned.
 #[tauri::command]
 pub async fn ask_claude(
     state: State<'_, Arc<AppState>>,
@@ -122,15 +130,21 @@ pub async fn ask_claude(
     quote: Option<String>,
     doc_id: Option<String>,
     history: Vec<recommend::Turn>,
+    on_event: tauri::ipc::Channel<AskEvent>,
 ) -> Result<AskReply, String> {
     let state = state.inner().clone();
     blocking(move || {
-        ask_paper(
+        ask_paper_stream(
             &state,
             &question,
             quote.as_deref(),
             doc_id.as_deref(),
             &history,
+            |d| {
+                let _ = on_event.send(AskEvent::Delta {
+                    text: d.to_string(),
+                });
+            },
         )
     })
     .await
@@ -143,6 +157,17 @@ pub fn ask_paper(
     doc_id: Option<&str>,
     history: &[recommend::Turn],
 ) -> Result<AskReply, String> {
+    ask_paper_stream(state, question, quote, doc_id, history, |_| {})
+}
+
+pub fn ask_paper_stream(
+    state: &Arc<AppState>,
+    question: &str,
+    quote: Option<&str>,
+    doc_id: Option<&str>,
+    history: &[recommend::Turn],
+    on_delta: impl FnMut(&str),
+) -> Result<AskReply, String> {
     let doc = match doc_id {
         Some(id) => Some(
             state
@@ -152,7 +177,7 @@ pub fn ask_paper(
         ),
         None => None,
     };
-    let reply = ask::ask(doc.as_ref(), question, quote, history)?;
+    let reply = ask::ask_stream(doc.as_ref(), question, quote, history, on_delta)?;
     Ok(AskReply { reply })
 }
 
