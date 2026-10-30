@@ -7,6 +7,8 @@
 //! nanran-probe search <query> [start]                 run an arXiv search
 //! nanran-probe ask <request>                          run the AI paper finder
 //! nanran-probe claude -                               show Claude Code install/login state
+//! nanran-probe update                                 compare with the latest GitHub release
+//! nanran-probe askpaper <doc-id> <question> [quote]   ask about a paper in the app's library
 
 use nanran::model::{Block, Builder, Doc};
 use std::sync::atomic::AtomicBool;
@@ -24,7 +26,36 @@ fn load(arg: &str) -> Doc {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args[1] == "update" {
+        println!("{:?}", nanran::update::check());
+        return;
+    }
+    if args[1] == "selfupdate" {
+        // Runs the in-app updater as if the app lived at <exe>, e.g. a test copy's
+        // `<dir>/Nanran.app/Contents/MacOS/nanran`.
+        let log = std::env::temp_dir().join("nanran-update.log");
+        println!("{:?} log={}", nanran::update::install(std::path::Path::new(&args[2]), &log), log.display());
+        return;
+    }
     let (cmd, target) = (args[1].as_str(), args[2].as_str());
+    if cmd == "askpaper" {
+        // Uses the installed app's real library.
+        let home = std::env::var_os("HOME").expect("HOME");
+        let dir = std::path::Path::new(&home)
+            .join("Library/Application Support/dev.rlaope.nanran/papers");
+        let state = std::sync::Arc::new(nanran::AppState::new(dir).expect("state"));
+        let started = std::time::Instant::now();
+        let a = nanran::commands::ask_paper(
+            &state,
+            &args[3],
+            args.get(4).map(String::as_str),
+            Some(target),
+            &[],
+        )
+        .expect("ask");
+        println!("{:.1}s\n{}", started.elapsed().as_secs_f32(), a.reply);
+        return;
+    }
     if cmd == "claude" {
         println!("{:?}", nanran::translate::claude_status());
         return;

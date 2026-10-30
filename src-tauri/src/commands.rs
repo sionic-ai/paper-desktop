@@ -2,7 +2,7 @@
 
 use crate::library::{Library, Meta};
 use crate::model::{self, Doc};
-use crate::{arxiv, pdf, recommend, search, translate};
+use crate::{arxiv, ask, pdf, recommend, search, translate, update};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -107,6 +107,67 @@ pub async fn ai_recommend(
     history: Vec<recommend::Turn>,
 ) -> Result<recommend::Answer, String> {
     blocking(move || recommend::recommend(&request, &history)).await
+}
+
+#[derive(Serialize)]
+pub struct AskReply {
+    pub reply: String,
+}
+
+/// Answers a question about the open paper (`doc_id`), optionally about a selected passage.
+#[tauri::command]
+pub async fn ask_claude(
+    state: State<'_, Arc<AppState>>,
+    question: String,
+    quote: Option<String>,
+    doc_id: Option<String>,
+    history: Vec<recommend::Turn>,
+) -> Result<AskReply, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        ask_paper(
+            &state,
+            &question,
+            quote.as_deref(),
+            doc_id.as_deref(),
+            &history,
+        )
+    })
+    .await
+}
+
+pub fn ask_paper(
+    state: &Arc<AppState>,
+    question: &str,
+    quote: Option<&str>,
+    doc_id: Option<&str>,
+    history: &[recommend::Turn],
+) -> Result<AskReply, String> {
+    let doc = match doc_id {
+        Some(id) => Some(
+            state
+                .library
+                .doc(id)
+                .map_err(|_| "논문을 찾지 못했어요".to_string())?,
+        ),
+        None => None,
+    };
+    let reply = ask::ask(doc.as_ref(), question, quote, history)?;
+    Ok(AskReply { reply })
+}
+
+/// Current version and the newest GitHub release. Network errors mean "no update known".
+#[tauri::command]
+pub async fn update_check() -> Result<update::UpdateInfo, String> {
+    blocking(|| Ok(update::check())).await
+}
+
+/// Reruns the installer for the folder this app lives in. The installer quits, replaces and
+/// reopens the app.
+#[tauri::command]
+pub fn update_install() -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|_| "앱 위치를 찾지 못했어요".to_string())?;
+    update::install(&exe, &std::env::temp_dir().join("nanran-update.log"))
 }
 
 /// Opens the paper's abstract page on arxiv.org in the default browser. Only arXiv IDs are accepted,

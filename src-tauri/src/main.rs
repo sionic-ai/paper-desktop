@@ -25,6 +25,9 @@ fn main() {
             nanran::commands::translation_start,
             nanran::commands::translation_status,
             nanran::commands::translation_cancel,
+            nanran::commands::update_check,
+            nanran::commands::update_install,
+            nanran::commands::ask_claude,
         ])
         .build(tauri::generate_context!())
         .expect("nanran failed to start")
