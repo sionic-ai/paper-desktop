@@ -6,6 +6,7 @@ use tauri::Manager;
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let root = app.path().app_data_dir()?.join("papers");
             app.manage(Arc::new(nanran::AppState::new(root)?));
@@ -17,6 +18,8 @@ fn main() {
             nanran::commands::library_remove,
             nanran::commands::open_arxiv,
             nanran::commands::open_pdf,
+            nanran::commands::arxiv_search,
+            nanran::commands::open_arxiv_page,
             nanran::commands::translation_start,
             nanran::commands::translation_status,
             nanran::commands::translation_cancel,

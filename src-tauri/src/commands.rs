@@ -2,7 +2,7 @@
 
 use crate::library::{Library, Meta};
 use crate::model::{self, Doc};
-use crate::{arxiv, pdf, translate};
+use crate::{arxiv, pdf, search, translate};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -88,6 +88,22 @@ pub async fn open_arxiv(state: State<'_, Arc<AppState>>, input: String) -> Resul
         state.library.save(&doc)
     })
     .await
+}
+
+#[tauri::command]
+pub async fn arxiv_search(query: String, start: usize) -> Result<search::Page, String> {
+    blocking(move || search::search(&query, start)).await
+}
+
+/// Opens the paper's abstract page on arxiv.org in the default browser. Only arXiv IDs are accepted,
+/// so the webview can never open an arbitrary URL.
+#[tauri::command]
+pub fn open_arxiv_page(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let id = arxiv::parse_id(&id).ok_or_else(|| "arXiv ID가 아니에요".to_string())?;
+    app.opener()
+        .open_url(format!("https://arxiv.org/abs/{id}"), None::<&str>)
+        .map_err(|_| "브라우저를 열지 못했어요".to_string())
 }
 
 #[tauri::command]

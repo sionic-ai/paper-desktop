@@ -4,6 +4,7 @@
 //! nanran-probe translate <arxiv-id | file.pdf> [n]    translate the first n units (default 6)
 //! nanran-probe dump <arxiv-id | file.pdf>             print every block on one line
 //! nanran-probe import <arxiv-id | file.pdf> <dir> [n] save into a library dir with n translated units
+//! nanran-probe search <query> [start]                 run an arXiv search
 
 use nanran::model::{Block, Builder, Doc};
 use std::sync::atomic::AtomicBool;
@@ -22,6 +23,22 @@ fn load(arg: &str) -> Doc {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let (cmd, target) = (args[1].as_str(), args[2].as_str());
+    if cmd == "search" {
+        let start = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(0);
+        let p = nanran::search::search(target, start).expect("search");
+        println!("total {} start {}", p.total, p.start);
+        for h in p.hits {
+            println!(
+                "{:<16} {} {:<8} {} — {}",
+                h.id,
+                h.published,
+                h.category,
+                h.title,
+                h.authors.join(", ")
+            );
+        }
+        return;
+    }
     let doc = load(target);
     let mut counts = std::collections::BTreeMap::new();
     let mut embedded = 0;

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { api, errorText, type Doc, type Meta, type Status } from './api'
+import { api, arxivDocId, arxivIdOf, errorText, looksLikeArxivId, type Doc, type Hit, type Meta, type Status } from './api'
 import { Reader } from './Reader'
+import { SearchResults, type SearchState } from './Search'
 
 type Ko = Record<string, string[]>
 
@@ -32,7 +33,11 @@ export function App() {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState<SearchState | null>(null)
+  const [view, setView] = useState<'doc' | 'search'>('doc')
+  const [fetchingId, setFetchingId] = useState<string | null>(null)
   const openSeq = useRef(0)
+  const searchSeq = useRef(0)
 
   const refreshList = useCallback(() => api.list().then(setPapers).catch(() => {}), [])
   useEffect(() => void refreshList(), [refreshList])
@@ -44,6 +49,7 @@ export function App() {
       const d = await api.get(id)
       if (seq !== openSeq.current) return
       setDoc(d)
+      setView('doc')
       setKo({})
       setStatus(null)
       document.querySelector('.main')?.scrollTo(0, 0)
@@ -79,9 +85,48 @@ export function App() {
     await open(meta.id, true)
   }
 
+  const runSearch = async (query: string, start: number) => {
+    const seq = ++searchSeq.current
+    setView('search')
+    setSearch(prev =>
+      start > 0 && prev ? { ...prev, loading: true, error: null } : { query, hits: [], total: 0, loading: true, error: null }
+    )
+    if (start === 0) document.querySelector('.main')?.scrollTo(0, 0)
+    try {
+      const page = await api.search(query, start)
+      if (seq !== searchSeq.current) return
+      setSearch(prev => {
+        const kept = start > 0 && prev ? prev.hits : []
+        const seen = new Set(kept.map(h => h.id))
+        return { query, hits: [...kept, ...page.hits.filter(h => !seen.has(h.id))], total: page.total, loading: false, error: null }
+      })
+    } catch (err) {
+      if (seq === searchSeq.current) setSearch(prev => (prev ? { ...prev, loading: false, error: errorText(err) } : prev))
+    }
+  }
+
+  const openHit = async (hit: Hit) => {
+    const docId = arxivDocId(hit.id)
+    if (papers.some(p => p.id === docId)) return void open(docId, false)
+    if (fetchingId) return
+    setFetchingId(hit.id)
+    setError(null)
+    try {
+      await imported(await api.openArxiv(hit.id))
+    } catch (err) {
+      setSearch(prev => (prev ? { ...prev, error: errorText(err) } : prev))
+    } finally {
+      setFetchingId(null)
+    }
+  }
+
+  const openWeb = (id: string) => void api.openArxivPage(id).catch(err => setError(errorText(err)))
+
   const submitArxiv = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || busy) return
+    const q = input.trim()
+    if (!q || busy) return
+    if (!looksLikeArxivId(q)) return void runSearch(q, 0)
     setBusy('arXiv에서 논문을 가져오는 중…')
     setError(null)
     try {
@@ -130,17 +175,23 @@ export function App() {
           <input
             value={input}
             onChange={e => setInput(e.target.value)}
-            placeholder="arXiv ID 또는 주소"
+            placeholder="arXiv 검색 · ID · 주소"
             spellCheck={false}
             disabled={!!busy}
-            aria-label="arXiv ID 또는 주소"
+            aria-label="arXiv 검색어, ID 또는 주소"
           />
         </form>
         <button className="pdf-btn" onClick={pickPdf} disabled={!!busy}>PDF 파일 열기</button>
+        {search && (
+          <button className={`search-tab${view === 'search' ? ' active' : ''}`} onClick={() => setView('search')}>
+            <span className="t">검색: {search.query}</span>
+            <span className="n">{search.loading && !search.hits.length ? '…' : search.total.toLocaleString()}</span>
+          </button>
+        )}
         <div className="list-label">내 논문</div>
         <ul className="papers">
           {papers.map(p => (
-            <li key={p.id} className={doc?.id === p.id ? 'active' : ''}>
+            <li key={p.id} className={view === 'doc' && doc?.id === p.id ? 'active' : ''}>
               <button className="paper" onClick={() => void open(p.id, false)} title={p.title}>
                 <span className="t">{p.title}</span>
                 <span className="src">{p.source.split('/').pop()}</span>
@@ -154,8 +205,13 @@ export function App() {
 
       <main className="main">
         <header className="bar" onMouseDown={dragWindow}>
-          <div className="bar-title" onMouseDown={dragWindow}>{doc?.title ?? ''}</div>
-          {doc && (
+          <div className="bar-title" onMouseDown={dragWindow}>{view === 'search' ? 'arXiv 검색' : doc?.title ?? ''}</div>
+          {view === 'doc' && doc && arxivIdOf(doc.id) && (
+            <button className="bar-link" onClick={() => openWeb(arxivIdOf(doc.id)!)} title="기본 브라우저로 arxiv.org 열기">
+              arxiv.org ↗
+            </button>
+          )}
+          {view === 'doc' && doc && (
             <div className="progress">
               {status?.running ? (
                 <>
@@ -175,13 +231,22 @@ export function App() {
         </header>
         {(error || status?.error) && <div className="error" role="alert">{error ?? status?.error}</div>}
         {busy && <div className="notice">{busy}</div>}
-        {doc ? (
+        {view === 'search' && search ? (
+          <SearchResults
+            state={search}
+            saved={new Set(papers.map(p => arxivIdOf(p.id)).filter((x): x is string => !!x))}
+            busyId={fetchingId}
+            onOpen={hit => void openHit(hit)}
+            onWeb={hit => openWeb(hit.id)}
+            onMore={() => void runSearch(search.query, search.hits.length)}
+          />
+        ) : doc ? (
           <Reader doc={doc} ko={ko} />
         ) : (
           !busy && (
             <div className="welcome">
               <h1>영어 논문을 한국어와 나란히</h1>
-              <p>왼쪽에 arXiv ID(예: 1706.03762)를 넣거나 PDF를 여세요.</p>
+              <p>왼쪽 칸에 검색어(예: flash attention)나 arXiv ID(예: 1706.03762)를 넣거나 PDF를 여세요.</p>
               <p className="sub">번역은 이 Mac에 로그인된 Claude Code로 하고, 결과는 이 Mac에만 저장돼요.</p>
             </div>
           )
