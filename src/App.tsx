@@ -5,6 +5,20 @@ import { Reader } from './Reader'
 import { SearchResults, type SearchState } from './Search'
 import { AiChat, type ChatState } from './Ai'
 import { FloatingAssistant, SelectionAsk, useAsk } from './Assistant'
+import { dragSplit, stored } from './resize'
+
+const SIDE_W = 260
+const SIDE_MIN = 200
+const SIDE_MAX = 440
+
+function SidebarIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+      <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" />
+      <path d="M6 2.75v10.5" />
+    </svg>
+  )
+}
 
 const UPDATE_EVERY = 3 * 60 * 60 * 1000
 
@@ -92,6 +106,54 @@ export function App() {
       localStorage.setItem('nanran.swapped', s ? '0' : '1')
       return !s
     })
+  // Sidebar: drag its edge to resize, drag it narrow (or press ⌘B) to fold it away.
+  const app = useRef<HTMLDivElement>(null)
+  const [sideW, setSideW] = useState(() => stored('nanran.sideWidth', SIDE_W, SIDE_MIN, SIDE_MAX))
+  const [folded, setFolded] = useState(() => localStorage.getItem('nanran.sideFolded') === '1')
+  const fold = (f: boolean) => {
+    localStorage.setItem('nanran.sideFolded', f ? '1' : '0')
+    setFolded(f)
+  }
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        setFolded(f => {
+          localStorage.setItem('nanran.sideFolded', f ? '0' : '1')
+          return !f
+        })
+      }
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [])
+  const resizeSide = (e: React.PointerEvent) => {
+    const el = app.current
+    if (!el) return
+    let w = sideW
+    let fold = false
+    dragSplit(
+      e,
+      x => {
+        fold = x < SIDE_MIN - 60
+        w = Math.min(SIDE_MAX, Math.max(SIDE_MIN, Math.round(x)))
+        el.style.setProperty('--side-w', `${fold ? 0 : w}px`)
+        el.classList.toggle('folding', fold)
+      },
+      () => {
+        // React owns this inline value too, so leave it at the settled width rather than removing it.
+        el.style.setProperty('--side-w', `${fold ? sideW : w}px`)
+        el.classList.remove('folding')
+        if (fold) {
+          localStorage.setItem('nanran.sideFolded', '1')
+          setFolded(true)
+        } else {
+          localStorage.setItem('nanran.sideWidth', String(w))
+          setSideW(w)
+        }
+      }
+    )
+  }
   const openSeq = useRef(0)
   const searchSeq = useRef(0)
   // Questions are about the paper on screen; search results and the welcome page ask without one.
@@ -256,9 +318,13 @@ export function App() {
   const remaining = total - translated
 
   return (
-    <div className="app">
-      <aside className="side">
-        <div className="side-top" onMouseDown={dragWindow} />
+    <div className={`app${folded ? ' folded' : ''}`} ref={app} style={{ '--side-w': `${sideW}px` } as React.CSSProperties}>
+      <aside className="side" aria-hidden={folded || undefined} inert={folded || undefined}>
+        <div className="side-top" onMouseDown={dragWindow}>
+          <button className="side-fold" onClick={() => fold(true)} title="사이드바 접기 (⌘B)" aria-label="사이드바 접기">
+            <SidebarIcon />
+          </button>
+        </div>
         <div className="brand" onMouseDown={dragWindow}>나란</div>
         <form className="import" onSubmit={submitArxiv}>
           <input
@@ -296,9 +362,28 @@ export function App() {
         </ul>
         <UpdateButton />
       </aside>
+      {!folded && (
+        <div
+          className="side-resize"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="사이드바 너비"
+          title="끌어서 너비 조절 · 두 번 눌러 기본값"
+          onPointerDown={resizeSide}
+          onDoubleClick={() => {
+            localStorage.setItem('nanran.sideWidth', String(SIDE_W))
+            setSideW(SIDE_W)
+          }}
+        />
+      )}
 
       <main className="main">
         <header className="bar" onMouseDown={dragWindow}>
+          {folded && (
+            <button className="side-fold" onClick={() => fold(false)} title="사이드바 펼치기 (⌘B)" aria-label="사이드바 펼치기">
+              <SidebarIcon />
+            </button>
+          )}
           <div className="bar-title" onMouseDown={dragWindow}>{view === 'search' ? 'arXiv 검색' : view === 'ai' ? 'AI로 논문 찾기' : doc?.title ?? ''}</div>
           {view === 'doc' && doc && (
             <button className="bar-link" onClick={toggleSwap} title="원문과 한국어 칸의 좌우 위치를 바꿔요">

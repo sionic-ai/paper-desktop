@@ -29,10 +29,34 @@ body {
 button { font: inherit; color: inherit; cursor: pointer; }
 button:disabled { cursor: default; opacity: .5; }
 
-.app { display: grid; grid-template-columns: 260px 1fr; height: 100%; }
+.app { --side-w: 260px; position: relative; display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr); height: 100%; transition: grid-template-columns .18s ease; }
+.app.folded { grid-template-columns: 0 minmax(0, 1fr); }
+.app.folded .side { visibility: hidden; border-right: 0; padding: 0; }
+.col-resizing, .col-resizing * { cursor: col-resize !important; user-select: none !important; }
+.col-resizing .app { transition: none; }
+.app.folding .side { opacity: .35; }
+/* The sidebar edge: a thin hit area that shows an accent line on hover or drag. */
+.side-resize {
+  position: absolute; top: 0; bottom: 0; left: calc(var(--side-w) - 4px); width: 8px; z-index: 6;
+  cursor: col-resize; touch-action: none;
+}
+.side-resize::after, .col-resize::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px;
+  background: var(--accent); opacity: 0; transition: opacity .12s;
+}
+.side-resize:hover::after, .col-resize:hover::after, .col-resizing .side-resize::after, .col-resizing .col-resize::after { opacity: .55; transition-delay: .08s; }
+.side-fold {
+  flex: none; display: grid; place-items: center; width: 28px; height: 26px; padding: 0; border: 0; border-radius: 6px;
+  background: none; color: var(--muted);
+}
+.side-fold:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.app.folded .bar { padding-left: 84px; }
+.app.folded .bar .side-fold { margin-left: -8px; margin-right: -8px; }
 
 /* Sidebar */
 .side {
+  overflow: hidden;
+  min-width: 0;
   background: var(--side);
   border-right: 1px solid var(--line);
   display: flex;
@@ -40,7 +64,7 @@ button:disabled { cursor: default; opacity: .5; }
   min-height: 0;
   padding: 0 12px 12px;
 }
-.side-top { height: 36px; flex: none; }
+.side-top { height: 36px; flex: none; display: flex; align-items: center; justify-content: flex-end; margin-right: -4px; }
 .brand { font-weight: 600; font-size: 16px; letter-spacing: -.01em; padding: 0 4px 14px; color: var(--accent); user-select: none; }
 .import input {
   width: 100%;
@@ -107,10 +131,17 @@ button:disabled { cursor: default; opacity: .5; }
 .welcome .sub { font-size: 12px; margin-top: 24px; }
 
 /* Reader: each row pairs English (left) with Korean (right). */
-.reader { max-width: 1320px; margin: 0 auto; padding: 8px 32px 120px; }
+.reader { --split: .5; --left: minmax(0, calc(var(--split) * (100% - 48px))); position: relative; max-width: 1320px; margin: 0 auto; padding: 8px 32px 120px; }
+/* The gap between the two columns: drag it to give one language more room. */
+.col-resize {
+  position: absolute; top: 0; bottom: 0; z-index: 2; width: 14px; cursor: col-resize; touch-action: none;
+  left: calc(32px + var(--split) * (100% - 64px - 48px) + 24px - 7px);
+}
+.col-resize::after { top: 14px; bottom: 120px; background: var(--line); }
+.col-resize:hover::after, .col-resizing .col-resize::after { background: var(--accent); }
 .cols-head {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: var(--left) minmax(0, 1fr);
   gap: 48px;
   font-size: 11px;
   font-weight: 600;
@@ -118,7 +149,7 @@ button:disabled { cursor: default; opacity: .5; }
   letter-spacing: .04em;
   padding: 14px 0 6px;
 }
-.row { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
+.row { display: grid; grid-template-columns: var(--left) minmax(0, 1fr); gap: 48px; }
 .row > * { margin: 0 0 1em; min-width: 0; }
 /* Swap button: Korean moves to the left column, English to the right. */
 .reader.swapped .row > .en, .reader.swapped .cols-head > .en { order: 2; }
