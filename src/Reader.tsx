@@ -36,13 +36,8 @@ function Pair({ unit, math, ko, as: Tag, className }: { unit: Unit; math: string
 const BlockView = memo(function BlockView({ block, math, ko }: { block: Block; math: string[]; ko: Ko }) {
   switch (block.kind) {
     case 'heading': {
-      // Headings stay in English, once across both columns.
       const Tag = (['h1', 'h2', 'h3', 'h4'] as const)[Math.min(block.level, 4) - 1] ?? 'h4'
-      return (
-        <div className={`row heading ${Tag} wide-heading`}>
-          <Tag lang="en" dangerouslySetInnerHTML={{ __html: inline(block.unit.sentences.join(' '), math) }} />
-        </div>
-      )
+      return <Pair unit={block.unit} math={math} ko={ko} as={Tag} className={`heading ${Tag}`} />
     }
     case 'para':
       return <Pair unit={block.unit} math={math} ko={ko} as="p" />
@@ -79,6 +74,7 @@ const BlockView = memo(function BlockView({ block, math, ko }: { block: Block; m
 
 function unitIds(block: Block): number[] {
   switch (block.kind) {
+    case 'heading':
     case 'para':
       return [block.unit.id]
     case 'figure':

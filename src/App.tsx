@@ -117,6 +117,16 @@ function dragWindow(e: React.MouseEvent) {
   if (e.button === 0 && e.target === e.currentTarget) void getCurrentWindow().startDragging()
 }
 
+function onlyHeadingsMissing(doc: Doc, ko: Ko): boolean {
+  let headingMissing = false
+  for (const b of doc.blocks) {
+    if (b.kind === 'heading') headingMissing ||= ko[b.unit.id] === undefined
+    else if (b.kind === 'para' && ko[b.unit.id] === undefined) return false
+    else if ((b.kind === 'figure' || b.kind === 'table') && b.caption && ko[b.caption.id] === undefined) return false
+  }
+  return headingMissing
+}
+
 export function App() {
   const [papers, setPapers] = useState<Meta[]>([])
   const [doc, setDoc] = useState<Doc | null>(null)
@@ -217,7 +227,12 @@ export function App() {
       document.querySelector('.main')?.scrollTo(0, 0)
       if (startTranslation === 'redo') await api.retranslate(id)
       else if (startTranslation) await api.translate(id)
-      const s = await api.status(id)
+      let s = await api.status(id)
+      // Papers translated before headings were translated: fill in just the headings.
+      if (!s.running && !s.outdated && onlyHeadingsMissing(d, s.units)) {
+        await api.translate(id)
+        s = await api.status(id)
+      }
       if (seq !== openSeq.current) return
       setStatus(s)
       setKo(s.units)
@@ -343,12 +358,11 @@ export function App() {
     await refreshList()
   }
 
-  // Same units the Rust job translates: paragraphs and captions. Headings stay in English, and
-  // papers translated before that rule may still carry heading entries, so count by id.
+  // Same units the Rust job translates: headings, paragraphs and captions.
   const unitIds = useMemo(() => {
     const ids: number[] = []
     for (const b of doc?.blocks ?? []) {
-      if (b.kind === 'para') ids.push(b.unit.id)
+      if (b.kind === 'heading' || b.kind === 'para') ids.push(b.unit.id)
       else if ((b.kind === 'figure' || b.kind === 'table') && b.caption) ids.push(b.caption.id)
     }
     return ids
