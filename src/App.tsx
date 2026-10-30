@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { api, arxivDocId, arxivIdOf, errorText, looksLikeArxivId, type Doc, type Hit, type Meta, type Status } from './api'
 import { Reader } from './Reader'
 import { SearchResults, type SearchState } from './Search'
@@ -111,10 +110,6 @@ function mergeKo(prev: Ko, next: Ko): Ko {
     }
   }
   return changed ? out : prev
-}
-
-function dragWindow(e: React.MouseEvent) {
-  if (e.button === 0 && e.target === e.currentTarget) void getCurrentWindow().startDragging()
 }
 
 function onlyHeadingsMissing(doc: Doc, ko: Ko): boolean {
@@ -374,12 +369,12 @@ export function App() {
   return (
     <div className={`app${folded ? ' folded' : ''}`} ref={app} style={{ '--side-w': `${sideW}px` } as React.CSSProperties}>
       <aside className="side" aria-hidden={folded || undefined} inert={folded || undefined}>
-        <div className="side-top" onMouseDown={dragWindow}>
+        <div className="side-top" data-tauri-drag-region>
           <button className="side-fold" onClick={() => fold(true)} title="사이드바 접기 (⌘B)" aria-label="사이드바 접기">
             <SidebarIcon />
           </button>
         </div>
-        <div className="brand" onMouseDown={dragWindow}>나란</div>
+        <div className="brand" data-tauri-drag-region>나란</div>
         <form className="import" onSubmit={submitArxiv}>
           <input
             value={input}
@@ -435,13 +430,13 @@ export function App() {
       )}
 
       <main className="main">
-        <header className="bar" onMouseDown={dragWindow}>
+        <header className="bar" data-tauri-drag-region>
           {folded && (
             <button className="side-fold" onClick={() => fold(false)} title="사이드바 펼치기 (⌘B)" aria-label="사이드바 펼치기">
               <SidebarIcon />
             </button>
           )}
-          <div className="bar-title" onMouseDown={dragWindow}>{view === 'search' ? 'arXiv 검색' : view === 'ai' ? 'AI로 논문 찾기' : doc?.title ?? ''}</div>
+          <div className="bar-title" data-tauri-drag-region>{view === 'search' ? 'arXiv 검색' : view === 'ai' ? 'AI로 논문 찾기' : doc?.title ?? ''}</div>
           {view === 'doc' && doc && (
             <button className="bar-link" onClick={toggleSwap} title="원문과 한국어 칸의 좌우 위치를 바꿔요">
               ⇄ {swapped ? '원문을 왼쪽으로' : '한국어를 왼쪽으로'}
