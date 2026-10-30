@@ -50,12 +50,14 @@ pub struct Doc {
 }
 
 impl Doc {
-    /// Units that get translated: the title and section headings, paragraphs and captions.
+    /// Units that get translated: section headings, paragraphs and captions. The paper title
+    /// (level-1 heading) stays in English, shown once across both columns.
     pub fn units(&self) -> Vec<&Unit> {
         self.blocks
             .iter()
             .filter_map(|b| match b {
-                Block::Heading { unit, .. } | Block::Para { unit } => Some(unit),
+                Block::Heading { level, unit } if *level > 1 => Some(unit),
+                Block::Para { unit } => Some(unit),
                 Block::Figure { caption, .. } | Block::Table { caption, .. } => caption.as_ref(),
                 _ => None,
             })
@@ -226,12 +228,13 @@ mod tests {
     #[test]
     fn headings_are_translated_and_marked() {
         let mut b = Builder::default();
+        b.heading(1, "Sparse Memory");
         b.heading(2, "Abstract");
         b.para("We study memory.");
         let doc = b.finish("x".into(), "arxiv");
         let units = doc.units();
-        assert_eq!(units.len(), 2);
+        assert_eq!(units.len(), 2, "the paper title stays in English");
         assert_eq!(units[0].sentences, vec!["Abstract"]);
-        assert_eq!(doc.heading_ids(), [units[0].id].into());
+        assert!(doc.heading_ids().contains(&units[0].id));
     }
 }
