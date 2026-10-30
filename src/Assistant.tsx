@@ -182,10 +182,29 @@ export function FloatingAssistant({ ask, docTitle }: { ask: Ask; docTitle: strin
   )
 }
 
-const CHIPS = ['설명해 줘', '쉽게 풀어 줘', '한국어로 번역해 줘']
 const BUBBLE_W = 300
 
-type Spot = { quote: string; x: number; below: number; above: number }
+type Spot = { quote: string; range: Range }
+
+// Keeps the dragged passage painted after focus moves to the input (which clears the
+// native selection) and while the reader scrolls. WebKit 17.2+ has the Highlight API.
+const HL = 'nanran-quote'
+type HighlightRegistry = { set: (name: string, h: unknown) => void; delete: (name: string) => void }
+function paintQuote(range: Range | null) {
+  const reg = (globalThis.CSS as unknown as { highlights?: HighlightRegistry } | undefined)?.highlights
+  const Ctor = (globalThis as unknown as { Highlight?: new (...r: Range[]) => unknown }).Highlight
+  if (!reg || !Ctor) return
+  if (range) reg.set(HL, new Ctor(range))
+  else reg.delete(HL)
+}
+
+function EnterIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M13 3.5v4.5a2 2 0 0 1-2 2H3.5M6.5 7 3.5 10l3 3" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
 
 /** Speech bubble under a drag selection in the reader; asking opens the floating panel with the selection as a quote. */
 export function SelectionAsk({ busy, resetKey, onAsk }: { busy: boolean; resetKey: string | null; onAsk: (question: string, quote: string) => void }) {
@@ -196,6 +215,7 @@ export function SelectionAsk({ busy, resetKey, onAsk }: { busy: boolean; resetKe
 
   const hide = useCallback(() => {
     engaged.current = false
+    paintQuote(null)
     setSpot(null)
     setText('')
   }, [])
@@ -216,20 +236,21 @@ export function SelectionAsk({ busy, resetKey, onAsk }: { busy: boolean; resetKe
         if (!reader.contains(range.commonAncestorContainer)) return
         const quote = sel.toString().trim()
         if (quote.length < 2 || quote.length > 2000) return
-        const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 || r.height > 0)
-        const all = range.getBoundingClientRect()
-        const last = rects[rects.length - 1] ?? all
-        const first = rects[0] ?? all
         engaged.current = false
         setText('')
-        setSpot({ quote, x: last.right, below: last.bottom, above: first.top })
+        const kept = range.cloneRange()
+        paintQuote(kept)
+        setSpot({ quote, range: kept })
       }, 0)
     }
     const down = (e: MouseEvent) => {
       if (el.current?.contains(e.target as Node)) engaged.current = true
+      // Grabbing the reader's own scrollbar is scrolling, not a new click.
+      else if (e.target instanceof Element && e.target.classList.contains('main')) return
       else if (el.current) hide()
     }
     const change = () => {
+      // Typing in the bubble or scrolling must not drop the passage; only a new click elsewhere does.
       if (!el.current || engaged.current || el.current.contains(document.activeElement)) return
       const sel = window.getSelection()
       if (!sel || sel.isCollapsed) hide()
@@ -240,9 +261,7 @@ export function SelectionAsk({ busy, resetKey, onAsk }: { busy: boolean; resetKe
         hide()
       }
     }
-    const scroll = (e: Event) => {
-      if (el.current && e.target instanceof Element && e.target.classList.contains('main')) hide()
-    }
+    const scroll = () => place.current()
     document.addEventListener('mouseup', up)
     document.addEventListener('mousedown', down, true)
     document.addEventListener('selectionchange', change)
@@ -259,18 +278,29 @@ export function SelectionAsk({ busy, resetKey, onAsk }: { busy: boolean; resetKe
   }, [hide])
 
   // Place under the end of the selection, or above its start when there is no room; clamp into the window.
-  useLayoutEffect(() => {
+  // Re-run on scroll so the bubble follows the passage instead of closing.
+  const place = useRef(() => {})
+  place.current = () => {
     const b = el.current
     if (!spot || !b) return
+    const rects = Array.from(spot.range.getClientRects()).filter(r => r.width > 0 || r.height > 0)
+    const all = spot.range.getBoundingClientRect()
+    const lastRect = rects[rects.length - 1] ?? all
+    const firstRect = rects[0] ?? all
+    const main = document.querySelector('.main')?.getBoundingClientRect()
+    const offscreen = !!main && (all.bottom < main.top + 48 || all.top > main.bottom)
+    b.style.visibility = offscreen ? 'hidden' : ''
+    const s2 = { x: lastRect.right, below: lastRect.bottom, above: firstRect.top }
     const h = b.offsetHeight
-    const left = Math.min(Math.max(spot.x - BUBBLE_W / 2, 8), window.innerWidth - BUBBLE_W - 8)
-    const fitsBelow = spot.below + 10 + h <= window.innerHeight - 8
-    const top = fitsBelow ? spot.below + 10 : Math.max(spot.above - 10 - h, 8)
+    const left = Math.min(Math.max(s2.x - BUBBLE_W / 2, 8), window.innerWidth - BUBBLE_W - 8)
+    const fitsBelow = s2.below + 10 + h <= window.innerHeight - 8
+    const top = fitsBelow ? s2.below + 10 : Math.max(s2.above - 10 - h, 8)
     b.style.left = `${left}px`
     b.style.top = `${top}px`
-    b.style.setProperty('--tail', `${Math.min(Math.max(spot.x - left, 16), BUBBLE_W - 16)}px`)
+    b.style.setProperty('--tail', `${Math.min(Math.max(s2.x - left, 16), BUBBLE_W - 16)}px`)
     b.classList.toggle('above', !fitsBelow)
-  }, [spot])
+  }
+  useLayoutEffect(() => place.current(), [spot])
 
   if (!spot) return null
 
@@ -286,7 +316,7 @@ export function SelectionAsk({ busy, resetKey, onAsk }: { busy: boolean; resetKe
       ref={el}
       className="sel-ask"
       style={{ width: BUBBLE_W }}
-      // Clicking a chip must not clear the selection; only the input takes focus.
+      // Clicking the send button must not move focus; only the input takes it.
       onMouseDown={e => {
         if (!(e.target instanceof HTMLInputElement)) e.preventDefault()
       }}
@@ -300,17 +330,13 @@ export function SelectionAsk({ busy, resetKey, onAsk }: { busy: boolean; resetKe
         <input
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder={busy ? '앞 질문의 답을 기다리는 중이에요' : '선택한 부분을 물어보세요'}
+          placeholder={busy ? '앞 질문의 답을 기다리는 중이에요' : '질문을 입력하세요'}
           aria-label="선택한 부분에 대한 질문"
           spellCheck={false}
           disabled={busy}
         />
+        <button type="submit" disabled={busy || !text.trim()} aria-label="보내기" title="보내기 (Enter)"><EnterIcon /></button>
       </form>
-      <div className="sel-chips">
-        {CHIPS.map(c => (
-          <button key={c} onClick={() => go(c)} disabled={busy}>{c}</button>
-        ))}
-      </div>
     </div>
   )
 }
