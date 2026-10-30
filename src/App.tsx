@@ -311,7 +311,10 @@ export function App() {
           !busy && (
             <div className="welcome">
               <h1>영어 논문을 한국어와 나란히</h1>
-              <p>왼쪽 칸에 검색어(예: flash attention)나 arXiv ID(예: 1706.03762)를 넣거나 PDF를 여세요.</p>
+              <p>
+                왼쪽 칸에 <span className="nowrap">검색어(예: flash attention)나</span>{' '}
+                <span className="nowrap">arXiv ID(예: 1706.03762)를</span> 넣거나 PDF를 여세요.
+              </p>
               <p className="sub">번역은 이 Mac에 로그인된 Claude Code로 하고, 결과는 이 Mac에만 저장돼요.</p>
             </div>
           )

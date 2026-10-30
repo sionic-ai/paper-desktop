@@ -20,6 +20,9 @@ body {
   color: var(--text);
   font: 15px/1.6 -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* Korean breaks only between 어절, never inside a word; long URLs/IDs may still break. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 button { font: inherit; color: inherit; cursor: pointer; }
 button:disabled { cursor: default; opacity: .5; }
@@ -97,7 +100,7 @@ button:disabled { cursor: default; opacity: .5; }
 .error, .notice { margin: 16px 24px 0; padding: 10px 14px; border-radius: 8px; font-size: 13px; }
 .error { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
 .notice { background: var(--paper); border: 1px solid var(--line); color: var(--muted); }
-.welcome { max-width: 520px; margin: 18vh auto 0; text-align: center; color: var(--muted); }
+.welcome { max-width: 520px; margin: 18vh auto 0; text-align: center; color: var(--muted); text-wrap: balance; }
 .welcome h1 { color: var(--text); font-size: 24px; letter-spacing: -.02em; margin-bottom: 10px; }
 .welcome .sub { font-size: 12px; margin-top: 24px; }
 
@@ -249,3 +252,8 @@ tr:last-child td { border-bottom: 1px solid #cfcecb; }
 
 .claude-notice code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--side); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; color: var(--text); }
 .row.wide-heading { grid-template-columns: 1fr; }
+
+/* Centered copy wraps into even lines instead of leaving one word alone on the last line. */
+.ai-empty, .notice, .error { text-wrap: balance; }
+.ko, .bubble, .pick-why { text-wrap: pretty; }
+.nowrap { white-space: nowrap; }
