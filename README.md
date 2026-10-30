@@ -76,13 +76,13 @@ scripts/release.sh       # 유니버설 빌드 후 GitHub 릴리스에 올림 (�
 
 ```sh
 cd src-tauri
-cargo run --release --bin nanran-probe -- claude -                # Claude Code 설치·로그인 상태
-cargo run --release --bin nanran-probe -- search 'flash attention' # arXiv 검색
-cargo run --release --bin nanran-probe -- ask 'KV 캐시 압축 논문 추천해줘' # AI 추천
-cargo run --release --bin nanran-probe -- parse 1706.03762        # 블록 통계
-cargo run --release --bin nanran-probe -- dump paper.pdf          # 블록별 한 줄 출력
-cargo run --release --bin nanran-probe -- translate 1706.03762 6  # 앞 6개 문단 번역
-cargo run --release --bin nanran-probe -- job paper.pdf /tmp/lib  # 앱과 같은 전체 번역 작업
+cargo run --release --features probe --bin nanran-probe -- claude -                # Claude Code 설치·로그인 상태
+cargo run --release --features probe --bin nanran-probe -- search 'flash attention' # arXiv 검색
+cargo run --release --features probe --bin nanran-probe -- ask 'KV 캐시 압축 논문 추천해줘' # AI 추천
+cargo run --release --features probe --bin nanran-probe -- parse 1706.03762        # 블록 통계
+cargo run --release --features probe --bin nanran-probe -- dump paper.pdf          # 블록별 한 줄 출력
+cargo run --release --features probe --bin nanran-probe -- translate 1706.03762 6  # 앞 6개 문단 번역
+cargo run --release --features probe --bin nanran-probe -- job paper.pdf /tmp/lib  # 앱과 같은 전체 번역 작업
 ```
 
 ## 한계

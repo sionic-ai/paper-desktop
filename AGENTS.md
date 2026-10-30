@@ -64,7 +64,7 @@ pnpm install
 pnpm dev                                    # run the app
 pnpm build                                  # typecheck + web build
 cd src-tauri && cargo test --lib && cargo clippy --all-targets
-cargo run --release --bin nanran-probe -- claude -   # CLI probes, see README
+cargo run --release --features probe --bin nanran-probe -- claude -   # CLI probes, see README
 ```
 
 Rules:

@@ -17,6 +17,11 @@ path = "src/main.rs"
 [[bin]]
 name = "nanran-probe"
 path = "src/bin/probe.rs"
+# Dev-only CLI. Gated so `tauri build` does not try to bundle it into Nanran.app.
+required-features = ["probe"]
+
+[features]
+probe = []
 
 [build-dependencies]
 tauri-build = { version = "2.6", features = [] }
