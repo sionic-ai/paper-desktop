@@ -10,10 +10,45 @@
   --pending: #f3f3f1;
   --update: #2f6bff;
   --shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 8px 28px rgba(0, 0, 0, .09);
+  --text-2: #5f5e59;
+  --text-3: #6f6e69;
+  --en: #45443f;
+  --ko: #3a3935;
+  --line-2: #dddcd8;
+  --rule: #cfcecb;
+  --thumb: #e2e1dd;
+  --placeholder: #a9a8a3;
+  --figure-bg: transparent;
   --en-size: 15px;
   --ko-size: 15.5px;
   color-scheme: light;
 }
+/* Dark: warm near-black paper with the same red accent, a touch brighter so it reads on dark. */
+:root[data-theme='dark'] {
+  --bg: #1b1b1a;
+  --paper: #232322;
+  --side: #171716;
+  --line: #2e2e2c;
+  --text: #e7e6e2;
+  --muted: #9a9993;
+  --accent: #e4735a;
+  --hl: #4a3d16;
+  --pending: #2a2a28;
+  --update: #3567d6;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 32px rgba(0, 0, 0, .5);
+  --text-2: #b4b3ad;
+  --text-3: #9a9993;
+  --en: #d6d4cf;
+  --ko: #d9d7d2;
+  --line-2: #3d3d3a;
+  --rule: #4a4a47;
+  --thumb: #3a3a37;
+  --placeholder: #74736d;
+  /* Paper figures are drawn for white pages; give them one so dark lines stay visible. */
+  --figure-bg: #e9e7e2;
+  color-scheme: dark;
+}
+:root.theme-switching *, :root.theme-switching *::before, :root.theme-switching *::after { transition: none !important; }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
@@ -85,9 +120,9 @@ button:disabled { cursor: default; opacity: .5; }
   border-radius: 7px;
   background: var(--paper);
   font-size: 13px;
-  color: #5f5e59;
+  color: var(--text-2);
 }
-.pdf-btn:hover:not(:disabled) { color: var(--text); border-color: #dddcd8; }
+.pdf-btn:hover:not(:disabled) { color: var(--text); border-color: var(--line-2); }
 .list-label { margin: 18px 4px 6px; font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .04em; }
 .papers { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
 .papers li { position: relative; border-radius: 7px; }
@@ -153,8 +188,8 @@ button:disabled { cursor: default; opacity: .5; }
 .row > * { margin: 0 0 1em; min-width: 0; }
 /* Swap button: Korean moves to the left column, English to the right. */
 .reader.swapped .row > .en, .reader.swapped .cols-head > .en { order: 2; }
-.en { font-size: var(--en-size); line-height: 1.75; color: #45443f; }
-.ko { font-size: var(--ko-size); line-height: 1.75; word-break: keep-all; color: #3a3935; }
+.en { font-size: var(--en-size); line-height: 1.75; color: var(--en); }
+.ko { font-size: var(--ko-size); line-height: 1.75; word-break: keep-all; color: var(--ko); }
 .s { border-radius: 3px; transition: background .08s; }
 .heading > * { font-family: inherit; font-weight: 600; letter-spacing: -.01em; line-height: 1.3; color: var(--text); }
 .heading.h1 > * { font-size: 26px; margin: 24px 0 16px; }
@@ -176,19 +211,23 @@ button:disabled { cursor: default; opacity: .5; }
 
 .wide-figure { margin: 1.4em 0; }
 .images { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; margin-bottom: 10px; }
-.images img { max-width: min(100%, 720px); max-height: 560px; object-fit: contain; }
+.images img { max-width: min(100%, 720px); max-height: 560px; object-fit: contain; background: var(--figure-bg); border-radius: 4px; }
+:root[data-theme='dark'] .images img { padding: 8px; }
+/* Floating panels need a lighter surface and edge to lift off a dark page; shadows barely show. */
+:root[data-theme='dark'] .asst, :root[data-theme='dark'] .sel-ask { background: #262625; border-color: #3a3a37; }
+:root[data-theme='dark'] .msg.user .bubble { background: color-mix(in srgb, var(--accent) 16%, var(--paper)); }
 .caption > * { font-size: 13px; line-height: 1.6; }
 .caption .ko { font-size: 13.5px; }
 .table-wrap { overflow-x: auto; display: flex; justify-content: center; }
 table { border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 td { border-bottom: 1px solid var(--line); padding: 4px 10px; white-space: nowrap; }
-tr:first-child td { border-top: 1px solid #cfcecb; font-weight: 600; }
-tr:last-child td { border-bottom: 1px solid #cfcecb; }
+tr:first-child td { border-top: 1px solid var(--rule); font-weight: 600; }
+tr:last-child td { border-bottom: 1px solid var(--rule); }
 .katex { font-size: 1em; }
 
 .main::-webkit-scrollbar { width: 10px; }
 .main::-webkit-scrollbar-thumb { background: transparent; border-radius: 5px; border: 3px solid var(--bg); }
-.main:hover::-webkit-scrollbar-thumb { background: #e2e1dd; }
+.main:hover::-webkit-scrollbar-thumb { background: var(--thumb); }
 
 /* Search */
 .search-tab {
@@ -225,8 +264,8 @@ tr:last-child td { border-bottom: 1px solid #cfcecb; }
 .hit-actions button:disabled { opacity: .55; }
 .search-loading, .search-empty { padding: 28px 0; font-size: 13px; color: var(--muted); text-align: center; }
 .error.inline { margin: 16px 0 0; }
-.more { display: block; margin: 24px auto 0; border: 1px solid var(--line); background: var(--paper); border-radius: 7px; padding: 6px 16px; font-size: 13px; color: #5f5e59; }
-.more:hover { color: var(--text); border-color: #dddcd8; }
+.more { display: block; margin: 24px auto 0; border: 1px solid var(--line); background: var(--paper); border-radius: 7px; padding: 6px 16px; font-size: 13px; color: var(--text-2); }
+.more:hover { color: var(--text); border-color: var(--line-2); }
 
 /* AI paper finder */
 .ai-btn {
@@ -246,8 +285,8 @@ tr:last-child td { border-bottom: 1px solid #cfcecb; }
 .ai-empty p { font-size: 13.5px; line-height: 1.6; margin: 0; }
 .ai-empty b { color: var(--accent); font-weight: 600; }
 .ai-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 22px; }
-.ai-examples button { border: 1px solid var(--line); background: var(--paper); border-radius: 16px; padding: 6px 12px; font-size: 12.5px; color: #5f5e59; }
-.ai-examples button:hover { border-color: #dddcd8; color: var(--text); }
+.ai-examples button { border: 1px solid var(--line); background: var(--paper); border-radius: 16px; padding: 6px 12px; font-size: 12.5px; color: var(--text-2); }
+.ai-examples button:hover { border-color: var(--line-2); color: var(--text); }
 
 .msg { display: flex; }
 .msg.user { justify-content: flex-end; }
@@ -262,8 +301,8 @@ tr:last-child td { border-bottom: 1px solid #cfcecb; }
 .pick { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--paper); border: 1px solid var(--line); }
 .pick-title { font-size: 14px; font-weight: 600; line-height: 1.4; letter-spacing: -.005em; }
 .pick-meta { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-.pick-id { font-variant-numeric: tabular-nums; color: #6f6e69; }
-.pick-why { margin: 6px 0 0; font-size: 13px; line-height: 1.55; color: #55544f; }
+.pick-id { font-variant-numeric: tabular-nums; color: var(--text-3); }
+.pick-why { margin: 6px 0 0; font-size: 13px; line-height: 1.55; color: var(--text-2); }
 .pick-actions { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
 .pick-actions button { border-radius: 6px; padding: 4px 10px; font-size: 12px; }
 .pick-actions .go { min-width: 120px; border: 1px solid var(--accent); background: transparent; color: var(--accent); font-weight: 500; }
@@ -290,6 +329,15 @@ tr:last-child td { border-bottom: 1px solid #cfcecb; }
 .ai-empty, .notice, .error { text-wrap: balance; }
 .ko, .bubble, .pick-why { text-wrap: pretty; }
 .nowrap { white-space: nowrap; }
+
+/* Sidebar footer: theme switch in the bottom-left corner. */
+.side-foot { flex: none; display: flex; align-items: center; padding-top: 8px; margin-left: -2px; }
+.theme-btn {
+  display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px;
+  background: none; color: var(--muted); transition: color .12s, background .12s;
+}
+.theme-btn:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.theme-btn svg { display: block; }
 
 /* Update button: bottom of the sidebar, only when a new release exists. */
 .update { flex: none; padding-top: 10px; }
@@ -401,7 +449,7 @@ tr:last-child td { border-bottom: 1px solid #cfcecb; }
 .sel-ask form { display: flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 9px; padding: 3px 3px 3px 10px; background: var(--paper); }
 .sel-ask form:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .sel-ask input { flex: 1; min-width: 0; padding: 4px 0; border: 0; background: transparent; font: inherit; font-size: 13px; color: var(--text); outline: none; }
-.sel-ask input::placeholder { color: #a9a8a3; }
+.sel-ask input::placeholder { color: var(--placeholder); }
 .sel-ask button {
   flex: none; width: 26px; height: 26px; border: 0; border-radius: 7px; display: grid; place-items: center;
   background: var(--accent); color: #fff;

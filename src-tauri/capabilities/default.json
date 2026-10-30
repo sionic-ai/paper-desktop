@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Main window: app commands and title-bar dragging; the PDF picker runs in Rust",
   "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-start-dragging"]
+  "permissions": ["core:default", "core:window:allow-start-dragging", "core:window:allow-set-theme"]
 }

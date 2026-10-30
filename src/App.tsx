@@ -6,6 +6,35 @@ import { SearchResults, type SearchState } from './Search'
 import { AiChat, type ChatState } from './Ai'
 import { FloatingAssistant, SelectionAsk, useAsk } from './Assistant'
 import { dragSplit, stored } from './resize'
+import { applyTheme, initialTheme, type Theme } from './theme'
+
+function ThemeButton() {
+  const [theme, setTheme] = useState<Theme>(initialTheme)
+  const next: Theme = theme === 'dark' ? 'light' : 'dark'
+  const label = next === 'dark' ? '다크 모드로 바꾸기' : '라이트 모드로 바꾸기'
+  return (
+    <button
+      className="theme-btn"
+      onClick={() => {
+        applyTheme(next, true)
+        setTheme(next)
+      }}
+      title={label}
+      aria-label={label}
+    >
+      {theme === 'dark' ? (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
+          <circle cx="8" cy="8" r="3" />
+          <path d="M8 1.5v1.3M8 13.2v1.3M1.5 8h1.3M13.2 8h1.3M3.4 3.4l.9.9M11.7 11.7l.9.9M3.4 12.6l.9-.9M11.7 4.3l.9-.9" />
+        </svg>
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+          <path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1Z" />
+        </svg>
+      )}
+    </button>
+  )
+}
 
 const SIDE_W = 260
 const SIDE_MIN = 200
@@ -361,6 +390,9 @@ export function App() {
           {papers.length === 0 && <li className="empty">아직 연 논문이 없어요</li>}
         </ul>
         <UpdateButton />
+        <div className="side-foot">
+          <ThemeButton />
+        </div>
       </aside>
       {!folded && (
         <div
