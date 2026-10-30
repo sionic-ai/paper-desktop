@@ -50,14 +50,26 @@ pub struct Doc {
 }
 
 impl Doc {
-    /// Units that get translated. Headings (title, Abstract, section names) stay in English:
-    /// readers know them already and they double as the paper's own outline.
+    /// Units that get translated: the title and section headings, paragraphs and captions.
     pub fn units(&self) -> Vec<&Unit> {
         self.blocks
             .iter()
             .filter_map(|b| match b {
-                Block::Para { unit } => Some(unit),
+                Block::Heading { unit, .. } | Block::Para { unit } => Some(unit),
                 Block::Figure { caption, .. } | Block::Table { caption, .. } => caption.as_ref(),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+impl Doc {
+    /// Ids of heading units, so the translator can render them as titles rather than sentences.
+    pub fn heading_ids(&self) -> std::collections::HashSet<u32> {
+        self.blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Heading { unit, .. } => Some(unit.id),
                 _ => None,
             })
             .collect()
@@ -212,13 +224,14 @@ mod tests {
     }
 
     #[test]
-    fn headings_are_not_sent_for_translation() {
+    fn headings_are_translated_and_marked() {
         let mut b = Builder::default();
         b.heading(2, "Abstract");
         b.para("We study memory.");
         let doc = b.finish("x".into(), "arxiv");
         let units = doc.units();
-        assert_eq!(units.len(), 1);
-        assert_eq!(units[0].sentences, vec!["We study memory."]);
+        assert_eq!(units.len(), 2);
+        assert_eq!(units[0].sentences, vec!["Abstract"]);
+        assert_eq!(doc.heading_ids(), [units[0].id].into());
     }
 }

@@ -251,6 +251,7 @@ fn main() {
                 &claude,
                 &doc.title,
                 &batch,
+                &doc.heading_ids(),
                 &AtomicBool::new(false),
             )
             .expect("translate");
@@ -273,6 +274,7 @@ fn main() {
             &claude,
             &doc.title,
             &batch,
+            &doc.heading_ids(),
             &AtomicBool::new(false),
         )
         .expect("translate");

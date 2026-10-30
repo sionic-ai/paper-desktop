@@ -301,6 +301,7 @@ pub fn start_translation(state: &Arc<AppState>, id: String, redo: bool) -> Resul
         .cloned()
         .collect();
     let batches = translate::batches(&pending);
+    let headings = doc.heading_ids();
     let cancel = Arc::new(AtomicBool::new(false));
     {
         let mut jobs = state.jobs.lock().unwrap();
@@ -341,7 +342,7 @@ pub fn start_translation(state: &Arc<AppState>, id: String, redo: bool) -> Resul
                         let Some(batch) = queue.lock().unwrap().next() else {
                             return;
                         };
-                        match translate::translate_batch(&claude, &doc.title, &batch, &cancel) {
+                        match translate::translate_batch(&claude, &doc.title, &batch, &headings, &cancel) {
                             Ok(units) => {
                                 let _ = state.library.add_translations(&id, &units);
                                 if let Some(job) = state.jobs.lock().unwrap().get_mut(&id) {

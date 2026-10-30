@@ -5,7 +5,7 @@
 
 use crate::model::Unit;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -31,6 +31,7 @@ Structure (never break these):
 - Each unit has exactly as many Korean sentences as English sentences, in the same order. Sentence i translates English sentence i. Never merge, split, drop or reorder sentences.
 - Copy every placeholder like ⟦M12⟧ exactly; each is a math expression. Keep citation markers like [5, 2] or (Smith et al., 2020), numbers and units unchanged.
 - Captions: keep labels like "Figure 1:" as "그림 1:" and "Table 2:" as "표 2:".
+- Units with "heading": true are the paper title or a section heading. Translate them as a short Korean title: a noun phrase with no 합니다/입니다 ending and no final period. Keep a leading section number such as "3.1" as is. Use the usual Korean section names: Abstract → 초록, Introduction → 서론, Background → 배경, Related Work → 관련 연구, Method(s) → 방법, Experiments → 실험, Results → 결과, Discussion → 논의, Conclusion(s) → 결론, Acknowledgments → 감사의 글, References → 참고문헌, Appendix → 부록. Always translate the paper title into Korean, even a famous one that people quote in English (e.g. "Attention Is All You Need" → "어텐션만 있으면 된다"). Write names exactly as the body text does: Transformer, LoRA, BERT and dataset names stay in English.
 
 Meaning: translate every claim, number, condition and hedge (may, likely, roughly). Do not summarize, explain or add anything.
 
@@ -47,7 +48,15 @@ Write Korean that reads as if a Korean researcher wrote it, not translationese:
 #[derive(Serialize)]
 struct Request<'a> {
     paper: &'a str,
-    units: &'a [Unit],
+    units: Vec<RequestUnit<'a>>,
+}
+
+#[derive(Serialize)]
+struct RequestUnit<'a> {
+    id: u32,
+    sentences: &'a [String],
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    heading: bool,
 }
 
 #[derive(Deserialize)]
@@ -444,12 +453,20 @@ pub fn translate_batch(
     claude: &Path,
     title: &str,
     units: &[Unit],
+    headings: &HashSet<u32>,
     cancel: &AtomicBool,
 ) -> Result<Vec<Unit>, String> {
     let call = |units: &[Unit]| -> Result<HashMap<u32, Unit>, String> {
         let input = serde_json::to_string(&Request {
             paper: title,
-            units,
+            units: units
+                .iter()
+                .map(|u| RequestUnit {
+                    id: u.id,
+                    sentences: &u.sentences,
+                    heading: headings.contains(&u.id),
+                })
+                .collect(),
         })
         .unwrap();
         let text = run_claude(claude, &input, cancel)?;
