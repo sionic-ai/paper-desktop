@@ -23,6 +23,7 @@ fn main() {
             nanran::commands::claude_status,
             nanran::commands::open_arxiv_page,
             nanran::commands::translation_start,
+            nanran::commands::translation_redo,
             nanran::commands::translation_status,
             nanran::commands::translation_cancel,
             nanran::commands::update_check,

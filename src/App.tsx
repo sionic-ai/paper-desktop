@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { api, arxivDocId, arxivIdOf, errorText, looksLikeArxivId, type Doc, type Hit, type Meta, type Status } from './api'
 import { Reader } from './Reader'
@@ -204,7 +204,7 @@ export function App() {
     return () => window.removeEventListener('focus', checkClaude)
   }, [checkClaude])
 
-  const open = useCallback(async (id: string, startTranslation: boolean) => {
+  const open = useCallback(async (id: string, startTranslation: boolean | 'redo') => {
     const seq = ++openSeq.current
     setError(null)
     try {
@@ -215,7 +215,8 @@ export function App() {
       setKo({})
       setStatus(null)
       document.querySelector('.main')?.scrollTo(0, 0)
-      if (startTranslation) await api.translate(id)
+      if (startTranslation === 'redo') await api.retranslate(id)
+      else if (startTranslation) await api.translate(id)
       const s = await api.status(id)
       if (seq !== openSeq.current) return
       setStatus(s)
@@ -342,8 +343,18 @@ export function App() {
     await refreshList()
   }
 
-  const total = doc ? doc.blocks.reduce((n, b) => n + (b.kind === 'heading' || b.kind === 'para' || ((b.kind === 'figure' || b.kind === 'table') && b.caption) ? 1 : 0), 0) : 0
-  const translated = Object.keys(ko).length
+  // Same units the Rust job translates: paragraphs and captions. Headings stay in English, and
+  // papers translated before that rule may still carry heading entries, so count by id.
+  const unitIds = useMemo(() => {
+    const ids: number[] = []
+    for (const b of doc?.blocks ?? []) {
+      if (b.kind === 'para') ids.push(b.unit.id)
+      else if ((b.kind === 'figure' || b.kind === 'table') && b.caption) ids.push(b.caption.id)
+    }
+    return ids
+  }, [doc])
+  const total = unitIds.length
+  const translated = unitIds.filter(id => ko[id] !== undefined).length
   const remaining = total - translated
 
   return (
@@ -429,15 +440,29 @@ export function App() {
           )}
           {view === 'doc' && doc && (
             <div className="progress">
-              {status?.running ? (
+              {status?.running && status.redo ? (
+                <>
+                  <span className="meter"><span style={{ width: `${status.total ? (status.done / status.total) * 100 : 0}%` }} /></span>
+                  <span>다시 번역 중 {status.done}/{status.total}</span>
+                  <button onClick={() => void api.cancel(doc.id)}>멈춤</button>
+                </>
+              ) : status?.running ? (
                 <>
                   <span className="meter"><span style={{ width: `${total ? (translated / total) * 100 : 0}%` }} /></span>
                   <span>번역 중 {translated}/{total}</span>
                   <button onClick={() => void api.cancel(doc.id)}>멈춤</button>
                 </>
-              ) : remaining > 0 ? (
+              ) : remaining > 0 && !status?.outdated ? (
                 <button className="primary" onClick={() => void open(doc.id, true)}>
                   {translated === 0 ? '번역하기' : `이어서 번역 (${remaining}개 남음)`}
+                </button>
+              ) : status?.outdated ? (
+                <button
+                  className="primary"
+                  onClick={() => void open(doc.id, 'redo')}
+                  title="읽기 편한 합니다체로 처음부터 다시 번역해요. 끝날 때까지 지금 번역이 그대로 보여요"
+                >
+                  새 문체로 다시 번역
                 </button>
               ) : (
                 <span className="done">번역 완료</span>

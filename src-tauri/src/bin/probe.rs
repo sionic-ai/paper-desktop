@@ -9,6 +9,7 @@
 //! nanran-probe claude -                               show Claude Code install/login state
 //! nanran-probe update                                 compare with the latest GitHub release
 //! nanran-probe askpaper <doc-id> <question> [quote]   ask about a paper in the app's library
+//! nanran-probe redo <doc-id> <dir>                    retranslate a saved paper in the current style
 
 use nanran::model::{Block, Builder, Doc};
 use std::sync::atomic::AtomicBool;
@@ -74,6 +75,32 @@ fn main() {
             a.reply
         );
         return;
+    }
+    if cmd == "redo" {
+        // Retranslates a saved paper in the current style, like the app's 다시 번역 button.
+        let dir = std::path::PathBuf::from(&args[3]);
+        let state = std::sync::Arc::new(nanran::AppState::new(dir).expect("state"));
+        let before = nanran::commands::status(&state, target);
+        println!("outdated before {}", before.outdated);
+        let started = std::time::Instant::now();
+        nanran::commands::start_translation(&state, target.to_string(), true).expect("start");
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            let s = nanran::commands::status(&state, target);
+            println!(
+                "{:>4.0}s units {}/{} redo {} running {} error {:?}",
+                started.elapsed().as_secs_f32(),
+                s.done,
+                s.total,
+                s.redo,
+                s.running,
+                s.error
+            );
+            if !s.running {
+                println!("outdated after {}", s.outdated);
+                return;
+            }
+        }
     }
     if cmd == "claude" {
         println!("{:?}", nanran::translate::claude_status());
@@ -180,7 +207,7 @@ fn main() {
         let state = std::sync::Arc::new(nanran::AppState::new(dir).expect("state"));
         state.library.save(&doc).expect("save");
         let started = std::time::Instant::now();
-        nanran::commands::start_translation(&state, doc.id.clone()).expect("start");
+        nanran::commands::start_translation(&state, doc.id.clone(), false).expect("start");
         loop {
             std::thread::sleep(std::time::Duration::from_secs(3));
             let s = nanran::commands::status(&state, &doc.id);

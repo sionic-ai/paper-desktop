@@ -19,6 +19,10 @@ export type Status = {
   done: number
   running: boolean
   error: string | null
+  /** Retranslating the whole paper in the current style. */
+  redo: boolean
+  /** Saved translation is in an older style. */
+  outdated: boolean
   units: Record<string, string[]>
 }
 
@@ -45,6 +49,7 @@ export const api = {
   openArxivPage: (id: string) => invoke<void>('open_arxiv_page', { id }),
   openPdf: () => invoke<Meta | null>('open_pdf'),
   translate: (id: string) => invoke<void>('translation_start', { id }),
+  retranslate: (id: string) => invoke<void>('translation_redo', { id }),
   status: (id: string) => invoke<Status>('translation_status', { id }),
   cancel: (id: string) => invoke<void>('translation_cancel', { id }),
   updateCheck: () => invoke<{ current: string; latest: string | null; available: boolean }>('update_check'),

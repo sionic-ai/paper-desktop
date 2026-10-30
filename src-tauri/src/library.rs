@@ -118,9 +118,22 @@ impl Library {
         write_atomic(&self.path(id, "ko")?, &serde_json::to_vec(&all).unwrap())
     }
 
+    /// Writing-style version of the saved translations (see `translate::STYLE`); 1 when unrecorded.
+    pub fn style(&self, id: &str) -> u32 {
+        self.path(id, "style")
+            .ok()
+            .and_then(|p| std::fs::read(p).ok())
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or(1)
+    }
+
+    pub fn set_style(&self, id: &str, style: u32) -> Result<(), String> {
+        write_atomic(&self.path(id, "style")?, style.to_string().as_bytes())
+    }
+
     pub fn remove(&self, id: &str) -> Result<(), String> {
         let _guard = self.write.lock().unwrap();
-        for suffix in ["doc", "meta", "ko"] {
+        for suffix in ["doc", "meta", "ko", "style"] {
             let _ = std::fs::remove_file(self.path(id, suffix)?);
         }
         Ok(())
@@ -160,6 +173,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(lib.translations("pdf-abc")[&0].len(), 2);
+        assert_eq!(lib.style("pdf-abc"), 1);
+        lib.set_style("pdf-abc", 2).unwrap();
+        assert_eq!(lib.style("pdf-abc"), 2);
         lib.remove("pdf-abc").unwrap();
         assert!(lib.list().is_empty());
         std::fs::remove_dir_all(dir).unwrap();

@@ -14,9 +14,12 @@ const WORKERS: usize = 3;
 
 #[derive(Default)]
 pub(crate) struct Job {
+    /// Units to translate in this job and units finished so far.
     total: usize,
     done: usize,
     running: bool,
+    /// Retranslating everything in the current style while the old text stays on screen.
+    redo: bool,
     error: Option<String>,
     cancel: Arc<AtomicBool>,
 }
@@ -48,6 +51,9 @@ pub struct Status {
     pub done: usize,
     pub running: bool,
     pub error: Option<String>,
+    pub redo: bool,
+    /// The saved translation was written in an older style and can be redone.
+    pub outdated: bool,
     /// Unit id → Korean sentences.
     pub units: HashMap<u32, Vec<String>>,
 }
@@ -253,7 +259,13 @@ pub fn translation_cancel(state: State<'_, Arc<AppState>>, id: String) {
 /// Translates every unit that has no saved translation yet.
 #[tauri::command]
 pub fn translation_start(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
-    start_translation(state.inner(), id)
+    start_translation(state.inner(), id, false)
+}
+
+/// Translates the whole paper again in the current style, replacing units as they arrive.
+#[tauri::command]
+pub fn translation_redo(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
+    start_translation(state.inner(), id, true)
 }
 
 #[tauri::command]
@@ -270,11 +282,13 @@ pub fn status(state: &Arc<AppState>, id: &str) -> Status {
         done: job.map_or(0, |j| j.done),
         running: job.is_some_and(|j| j.running),
         error: job.and_then(|j| j.error.clone()),
+        redo: job.is_some_and(|j| j.running && j.redo),
+        outdated: !units.is_empty() && state.library.style(id) < translate::STYLE,
         units,
     }
 }
 
-pub fn start_translation(state: &Arc<AppState>, id: String) -> Result<(), String> {
+pub fn start_translation(state: &Arc<AppState>, id: String, redo: bool) -> Result<(), String> {
     let claude = translate::find_claude().ok_or_else(|| {
         "Claude Code CLI를 찾지 못했어요. 설치 후 터미널에서 `claude`로 로그인해 주세요".to_string()
     })?;
@@ -283,7 +297,7 @@ pub fn start_translation(state: &Arc<AppState>, id: String) -> Result<(), String
     let pending: Vec<model::Unit> = doc
         .units()
         .into_iter()
-        .filter(|u| !have.contains_key(&u.id))
+        .filter(|u| redo || !have.contains_key(&u.id))
         .cloned()
         .collect();
     let batches = translate::batches(&pending);
@@ -296,9 +310,10 @@ pub fn start_translation(state: &Arc<AppState>, id: String) -> Result<(), String
         jobs.insert(
             id.clone(),
             Job {
-                total: batches.len(),
+                total: pending.len(),
                 done: 0,
                 running: !batches.is_empty(),
+                redo,
                 error: None,
                 cancel: cancel.clone(),
             },
@@ -306,6 +321,11 @@ pub fn start_translation(state: &Arc<AppState>, id: String) -> Result<(), String
     }
     if batches.is_empty() {
         return Ok(());
+    }
+    // A paper translated from scratch is entirely in the current style. A redo only counts once
+    // every unit has been replaced; until then the old style stays marked as outdated.
+    if have.is_empty() {
+        state.library.set_style(&id, translate::STYLE)?;
     }
     let state = state.clone();
     std::thread::spawn(move || {
@@ -325,7 +345,7 @@ pub fn start_translation(state: &Arc<AppState>, id: String) -> Result<(), String
                             Ok(units) => {
                                 let _ = state.library.add_translations(&id, &units);
                                 if let Some(job) = state.jobs.lock().unwrap().get_mut(&id) {
-                                    job.done += 1;
+                                    job.done += batch.len();
                                 }
                             }
                             Err(e) => {
@@ -338,9 +358,13 @@ pub fn start_translation(state: &Arc<AppState>, id: String) -> Result<(), String
                 });
             }
         });
+        let error = first_error.into_inner().unwrap();
+        if redo && error.is_none() && !cancel.load(Ordering::Relaxed) {
+            let _ = state.library.set_style(&id, translate::STYLE);
+        }
         if let Some(job) = state.jobs.lock().unwrap().get_mut(&id) {
             job.running = false;
-            job.error = first_error.into_inner().unwrap();
+            job.error = error;
         }
     });
     Ok(())
