@@ -110,6 +110,7 @@ if [ -z "$DIR" ]; then
   if [ -w /Applications ]; then DIR=/Applications; else DIR="$HOME/Applications"; fi
 fi
 mkdir -p "$DIR" || fail "$DIR 폴더를 만들지 못했어요."
+DIR="$(cd "$DIR" && pwd -P)"   # resolve symlinks (/var -> /private/var) so the running-copy check matches
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/nanran-install.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
@@ -119,9 +120,10 @@ curl -fL --progress-bar --retry 3 -o "$TMP/$ASSET" "$URL" || fail "앱을 내려
 ditto -x -k "$TMP/$ASSET" "$TMP/unpacked" || fail "압축을 풀지 못했어요."
 [ -d "$TMP/unpacked/$APP_NAME" ] || fail "내려받은 파일에 $APP_NAME 이 없어요."
 
-if pgrep -x nanran >/dev/null 2>&1; then
+# Quit only the copy we are about to replace, not a dev build or a copy elsewhere.
+if pgrep -f "$DIR/$APP_NAME/Contents/MacOS/nanran" >/dev/null 2>&1; then
   say "실행 중인 나란을 종료해요"
-  osascript -e 'quit app "Nanran"' >/dev/null 2>&1 || pkill -x nanran || true
+  pkill -f "$DIR/$APP_NAME/Contents/MacOS/nanran" || true
   sleep 1
 fi
 rm -rf "$DIR/$APP_NAME"
