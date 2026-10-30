@@ -30,7 +30,7 @@ Rules:
 - Use the terminology Korean researchers in this field actually use. Keep terms that are normally written in English (model names, datasets, metrics, acronyms such as BLEU, SD, GPU) in English.
 - Write plain academic Korean in the 한다/이다 style.
 - Copy every placeholder like ⟦M12⟧ exactly; each is a math expression. Keep citation markers like [5, 2] or (Smith et al., 2020), numbers and units unchanged.
-- Headings and captions are short; translate them concisely and keep labels like "Figure 1:" as "그림 1:" and "Table 2:" as "표 2:"."#;
+- Captions are short; translate them concisely and keep labels like "Figure 1:" as "그림 1:" and "Table 2:" as "표 2:"."#;
 
 #[derive(Serialize)]
 struct Request<'a> {
