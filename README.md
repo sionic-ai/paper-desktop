@@ -3,6 +3,7 @@
 영어 논문을 왼쪽에 원문, 오른쪽에 한국어 번역으로 나란히 보여 주는 macOS 데스크톱 앱입니다. 한쪽 문장에 마우스를 올리면 짝이 되는 문장이 양쪽에서 함께 하이라이트됩니다.
 
 - **찾기**: 왼쪽 칸에 검색어(`flash attention`, `"sliding window" mistral`)를 넣으면 arXiv를 앱 안에서 검색합니다. 결과에서 바로 나란히 읽거나 arxiv.org를 기본 브라우저로 열 수 있습니다
+- **AI로 찾기**: 왼쪽 칸의 `AI로 논문 찾기`에 원하는 주제를 말로 적으면 Claude가 arXiv를 검색해 논문 번호와 링크를 추천합니다. 말풍선의 `번역하기`를 누르면 그 논문을 가져와 바로 나란히 읽기로 열고 번역을 시작합니다
 - **불러오기**: arXiv ID나 주소(`1706.03762`, `https://arxiv.org/abs/2310.06825`)는 바로 가져오고, 로컬 PDF 파일도 열 수 있습니다
 - **번역**: 이 Mac에 로그인된 [Claude Code](https://docs.claude.com/claude-code) CLI를 사용하며, API 키는 필요 없습니다
 - **저장**: 논문과 번역은 `~/Library/Application Support/dev.rlaope.nanran/papers/`에만 저장됩니다
@@ -23,6 +24,7 @@ pnpm tauri build         # src-tauri/target/release/bundle/macos/Nanran.app 생�
 |---|---|---|
 | arXiv | `src-tauri/src/arxiv.rs` | arXiv HTML(LaTeXML)을 섹션, 문단, 그림, 표, 수식 단위로 파싱합니다. HTML 판이 없으면 PDF로 대신 처리합니다. 그림은 data URL로 임베드합니다. |
 | 검색 | `src-tauri/src/search.rs` | arXiv 공개 API(`export.arxiv.org/api/query`)에 모든 단어가 들어간 논문을 관련도순으로 20개씩 요청하고 Atom 응답을 파싱합니다. 따옴표로 묶은 구절은 붙여서 찾습니다. arxiv.org 열기는 ID만 받아 `https://arxiv.org/abs/<id>`로만 엽니다. |
+| AI 추천 | `src-tauri/src/recommend.rs` | Claude가 요청을 영어 검색어 3개 이내와 확신하는 arXiv ID로 바꾸고, 앱이 arXiv API로 실제 결과를 가져온 뒤 Claude가 그 안에서만 최대 5개를 고릅니다. 후보에 없는 ID는 버리므로 존재하지 않는 논문 링크는 나오지 않습니다. 요청 하나에 Claude 호출 2번과 arXiv 요청 최대 4번이 들어가고 15초 안팎 걸립니다. |
 | PDF | `src-tauri/src/pdf.rs` | 텍스트를 추출한 뒤 제목과 번호 붙은 섹션을 복원합니다. 쪽 번호를 제거하고, 줄 끝 하이픈을 문서 어휘를 기준으로 판정해 이어 붙입니다. |
 | 문장 | `src-tauri/src/sentence.rs` | 학술 약어(e.g., Fig., et al. 등)를 고려해 문장을 분할합니다. |
 | 번역 | `src-tauri/src/translate.rs` | `claude -p`를 도구, MCP, 설정을 모두 끈 상태로 빈 임시 폴더에서 실행합니다. 문단 ID와 문장 수가 1:1로 맞는 JSON을 받고, 맞지 않는 문단은 단독으로 다시 요청합니다. 3개 배치를 동시에 처리합니다. |
@@ -33,6 +35,7 @@ pnpm tauri build         # src-tauri/target/release/bundle/macos/Nanran.app 생�
 ```sh
 cd src-tauri
 cargo run --release --bin nanran-probe -- search 'flash attention' # arXiv 검색
+cargo run --release --bin nanran-probe -- ask 'KV 캐시 압축 논문 추천해줘' # AI 추천
 cargo run --release --bin nanran-probe -- parse 1706.03762        # 블록 통계
 cargo run --release --bin nanran-probe -- dump paper.pdf          # 블록별 한 줄 출력
 cargo run --release --bin nanran-probe -- translate 1706.03762 6  # 앞 6개 문단 번역

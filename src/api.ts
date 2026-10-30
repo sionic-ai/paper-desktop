@@ -39,6 +39,8 @@ export const api = {
   remove: (id: string) => invoke<void>('library_remove', { id }),
   openArxiv: (input: string) => invoke<Meta>('open_arxiv', { input }),
   search: (query: string, start: number) => invoke<SearchPage>('arxiv_search', { query, start }),
+  recommend: (request: string, history: { role: string; text: string }[]) =>
+    invoke<{ reply: string; picks: { hit: Hit; why: string }[] }>('ai_recommend', { request, history }),
   openArxivPage: (id: string) => invoke<void>('open_arxiv_page', { id }),
   openPdf: () => invoke<Meta | null>('open_pdf'),
   translate: (id: string) => invoke<void>('translation_start', { id }),

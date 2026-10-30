@@ -3,6 +3,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { api, arxivDocId, arxivIdOf, errorText, looksLikeArxivId, type Doc, type Hit, type Meta, type Status } from './api'
 import { Reader } from './Reader'
 import { SearchResults, type SearchState } from './Search'
+import { AiChat, type ChatState } from './Ai'
 
 type Ko = Record<string, string[]>
 
@@ -34,7 +35,8 @@ export function App() {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState<SearchState | null>(null)
-  const [view, setView] = useState<'doc' | 'search'>('doc')
+  const [view, setView] = useState<'doc' | 'search' | 'ai'>('doc')
+  const [chat, setChat] = useState<ChatState>({ messages: [], loading: false })
   const [fetchingId, setFetchingId] = useState<string | null>(null)
   const [swapped, setSwapped] = useState(() => localStorage.getItem('nanran.swapped') === '1')
   const toggleSwap = () =>
@@ -111,7 +113,8 @@ export function App() {
     }
   }
 
-  const openHit = async (hit: Hit) => {
+  /** Opens a search or AI pick side by side; a paper not in the library is fetched and translation starts. */
+  const openHit = async (hit: Hit, onError: (msg: string) => void) => {
     const docId = arxivDocId(hit.id)
     if (papers.some(p => p.id === docId)) return void open(docId, false)
     if (fetchingId) return
@@ -120,11 +123,28 @@ export function App() {
     try {
       await imported(await api.openArxiv(hit.id))
     } catch (err) {
-      setSearch(prev => (prev ? { ...prev, error: errorText(err) } : prev))
+      onError(errorText(err))
     } finally {
       setFetchingId(null)
     }
   }
+
+  const ask = async (text: string) => {
+    const history = chat.messages
+      .filter(m => m.role !== 'error')
+      .map(m => ({
+        role: m.role,
+        text: m.role === 'assistant' && m.picks.length ? `${m.text}\n${m.picks.map(p => `${p.hit.id} ${p.hit.title}`).join('\n')}` : m.text,
+      }))
+    setChat(c => ({ messages: [...c.messages, { role: 'user', text }], loading: true }))
+    try {
+      const a = await api.recommend(text, history)
+      setChat(c => ({ messages: [...c.messages, { role: 'assistant', text: a.reply, picks: a.picks }], loading: false }))
+    } catch (err) {
+      setChat(c => ({ messages: [...c.messages, { role: 'error', text: errorText(err) }], loading: false }))
+    }
+  }
+  const chatError = (msg: string) => setChat(c => ({ ...c, messages: [...c.messages, { role: 'error', text: msg }] }))
 
   const openWeb = (id: string) => void api.openArxivPage(id).catch(err => setError(errorText(err)))
 
@@ -188,6 +208,10 @@ export function App() {
           />
         </form>
         <button className="pdf-btn" onClick={pickPdf} disabled={!!busy}>PDF 파일 열기</button>
+        <button className={`ai-btn${view === 'ai' ? ' active' : ''}`} onClick={() => setView('ai')}>
+          <span className="spark" aria-hidden="true">✦</span> AI로 논문 찾기
+          {chat.loading && <span className="ai-dot" aria-label="찾는 중" />}
+        </button>
         {search && (
           <button className={`search-tab${view === 'search' ? ' active' : ''}`} onClick={() => setView('search')}>
             <span className="t">검색: {search.query}</span>
@@ -211,7 +235,7 @@ export function App() {
 
       <main className="main">
         <header className="bar" onMouseDown={dragWindow}>
-          <div className="bar-title" onMouseDown={dragWindow}>{view === 'search' ? 'arXiv 검색' : doc?.title ?? ''}</div>
+          <div className="bar-title" onMouseDown={dragWindow}>{view === 'search' ? 'arXiv 검색' : view === 'ai' ? 'AI로 논문 찾기' : doc?.title ?? ''}</div>
           {view === 'doc' && doc && (
             <button className="bar-link" onClick={toggleSwap} title="원문과 한국어 칸의 좌우 위치를 바꿔요">
               ⇄ {swapped ? '원문을 왼쪽으로' : '한국어를 왼쪽으로'}
@@ -242,12 +266,21 @@ export function App() {
         </header>
         {(error || status?.error) && <div className="error" role="alert">{error ?? status?.error}</div>}
         {busy && <div className="notice">{busy}</div>}
-        {view === 'search' && search ? (
+        {view === 'ai' ? (
+          <AiChat
+            state={chat}
+            saved={new Set(papers.map(p => arxivIdOf(p.id)).filter((x): x is string => !!x))}
+            busyId={fetchingId}
+            onAsk={q => void ask(q)}
+            onTranslate={hit => void openHit(hit, chatError)}
+            onWeb={hit => openWeb(hit.id)}
+          />
+        ) : view === 'search' && search ? (
           <SearchResults
             state={search}
             saved={new Set(papers.map(p => arxivIdOf(p.id)).filter((x): x is string => !!x))}
             busyId={fetchingId}
-            onOpen={hit => void openHit(hit)}
+            onOpen={hit => void openHit(hit, msg => setSearch(prev => (prev ? { ...prev, error: msg } : prev)))}
             onWeb={hit => openWeb(hit.id)}
             onMore={() => void runSearch(search.query, search.hits.length)}
           />
