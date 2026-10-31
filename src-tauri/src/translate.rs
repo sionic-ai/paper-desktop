@@ -21,6 +21,23 @@ const BATCH_CHARS: usize = 7000;
 const TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_OUTPUT: usize = 4 * 1024 * 1024;
 
+/// Which Korean text to write: a faithful translation or an easy explanation of each sentence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    Plain,
+    Easy,
+}
+
+impl Mode {
+    fn prompt(self) -> &'static str {
+        match self {
+            Mode::Plain => SYSTEM_PROMPT,
+            Mode::Easy => EASY_PROMPT,
+        }
+    }
+}
+
 const SYSTEM_PROMPT: &str = r#"You translate English research-paper text into Korean for Korean researchers and students who read it side by side with the English.
 
 Input on stdin is JSON: {"paper": title, "units": [{"id": n, "sentences": [english, ...]}]}.
@@ -44,6 +61,31 @@ Write Korean that reads as if a Korean researcher wrote it, not translationese:
 - "We" / "our" → "우리는/우리 모델" only when needed; otherwise drop the subject or use "이 논문/본 연구" sparingly. Do not start every sentence with a subject.
 - Terms: use the Korean term that Korean ML/CS papers actually use (어텐션, 인코더, 파인튜닝, 사전학습, 양자화, 가지치기). The first time a technical term appears in a unit, add the English in parentheses if Korean readers would not recognize the Korean alone, e.g. "파국적 망각(catastrophic forgetting)"; do not repeat the parentheses later. Keep names of models, datasets, metrics and acronyms (Transformer, LoRA, BLEU, GPU, F1) in English. Keep "state of the art" as "최고 성능" or "SOTA", not "최첨단 기술".
 - Keep sentences tight: cut filler words, but never cut information."#;
+
+const EASY_PROMPT: &str = r#"You explain English research-paper text in easy Korean for readers new to the field, such as a curious high-school student or a junior developer. They read your Korean side by side with the English, sentence by sentence.
+
+Input on stdin is JSON: {"paper": title, "units": [{"id": n, "sentences": [english, ...]}]}.
+Reply with ONLY this JSON and nothing else: {"units": [{"id": n, "sentences": [korean, ...]}]}
+
+Structure (never break these):
+- Every input unit appears once with the same id.
+- Each unit has exactly as many Korean entries as English sentences, in the same order. Entry i explains English sentence i and may be one or two short Korean sentences. Never merge, drop or reorder entries.
+- Copy every placeholder like ⟦M12⟧ exactly; each is a math expression. Keep citation markers like [5, 2] or (Smith et al., 2020), numbers and units unchanged.
+- Captions: keep labels like "Figure 1:" as "그림 1:" and "Table 2:" as "표 2:".
+- Units with "heading": true are section headings. Write a short Korean title: a noun phrase with no 합니다/입니다 ending and no final period. Keep a leading section number such as "3.1" as is. Use the usual Korean section names (Abstract → 초록, Introduction → 서론, Related Work → 관련 연구, Conclusion → 결론, References → 참고문헌, Appendix → 부록).
+
+Accuracy first: make the wording simple, not the facts. Keep every claim, number, condition and hedge (may, likely, roughly), and never make a result sound more certain or more general than the paper says. Add no outside facts or opinions.
+
+How to explain:
+- Use polite formal style (합니다/입니다체), like a friendly textbook.
+- Say plainly what is done and why, in natural Korean order. Break a dense English sentence into one or two short Korean sentences.
+- Use everyday Korean words. Do not leave English jargon untranslated (downstream, forward pass, sparse): say it in Korean.
+- Explain every technical term a newcomer would not know the first time it appears in a unit, in a short parenthesis or clause, e.g. "파인튜닝(이미 학습된 모델을 특정 작업에 맞게 조금 더 학습시키는 것)", "TF-IDF(어떤 대상이 특정 묶음에서 유난히 자주 나오는지 재는 점수)". Do not explain it again later in the same unit.
+- Add the missing "why" or "so what" in a short clause when the English leaves it implicit, and state an assumption a newcomer would miss. Keep each entry at most about twice the length of the English.
+- Turn abstract wording into concrete wording: "interference" → "새로 배운 것이 기존 지식을 덮어쓰는 문제".
+- Keep names of models, datasets, metrics and acronyms (Transformer, LoRA, BLEU, GPU) in English.
+- No filler or clichés: no "쉽게 말해", "즉," or "다시 말해" at the start of every sentence, no questions to the reader, no emojis, no exclamation marks."#;
+
 
 #[derive(Serialize)]
 struct Request<'a> {
@@ -212,11 +254,6 @@ fn child_path(claude: &Path) -> String {
         dirs.push(d.into());
     }
     dirs.join(":")
-}
-
-/// Runs one translation call. Returns the model's text reply.
-pub fn run_claude(claude: &Path, input: &str, cancel: &AtomicBool) -> Result<String, String> {
-    run_claude_with(claude, SYSTEM_PROMPT, input, cancel)
 }
 
 /// `claude -p` with every tool, MCP server, setting source and session file disabled, run in
@@ -454,6 +491,7 @@ pub fn translate_batch(
     title: &str,
     units: &[Unit],
     headings: &HashSet<u32>,
+    mode: Mode,
     cancel: &AtomicBool,
 ) -> Result<Vec<Unit>, String> {
     let call = |units: &[Unit]| -> Result<HashMap<u32, Unit>, String> {
@@ -469,7 +507,7 @@ pub fn translate_batch(
                 .collect(),
         })
         .unwrap();
-        let text = run_claude(claude, &input, cancel)?;
+        let text = run_claude_with(claude, mode.prompt(), &input, cancel)?;
         let reply: Reply = extract_json(&text)
             .and_then(|j| serde_json::from_str(j).ok())
             .ok_or_else(|| "번역 결과 형식이 올바르지 않아요".to_string())?;

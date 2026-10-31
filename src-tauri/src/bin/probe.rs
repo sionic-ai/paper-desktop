@@ -10,8 +10,11 @@
 //! nanran-probe update                                 compare with the latest GitHub release
 //! nanran-probe askpaper <doc-id> <question> [quote]   ask about a paper in the app's library
 //! nanran-probe redo <doc-id> <dir>                    retranslate a saved paper in the current style
+//!
+//! Set NANRAN_MODE=easy to run translate/job/import as the easy explanation instead.
 
 use nanran::model::{Block, Builder, Doc};
+use nanran::translate::Mode;
 use std::sync::atomic::AtomicBool;
 
 fn load(arg: &str) -> Doc {
@@ -22,6 +25,14 @@ fn load(arg: &str) -> Doc {
     } else {
         let id = nanran::arxiv::parse_id(arg).expect("arxiv id");
         nanran::arxiv::fetch(&id).expect("fetch")
+    }
+}
+
+fn mode() -> Mode {
+    if std::env::var("NANRAN_MODE").as_deref() == Ok("easy") {
+        Mode::Easy
+    } else {
+        Mode::Plain
     }
 }
 
@@ -80,13 +91,13 @@ fn main() {
         // Retranslates a saved paper in the current style, like the app's 다시 번역 button.
         let dir = std::path::PathBuf::from(&args[3]);
         let state = std::sync::Arc::new(nanran::AppState::new(dir).expect("state"));
-        let before = nanran::commands::status(&state, target);
+        let before = nanran::commands::status(&state, target, Mode::Plain);
         println!("outdated before {}", before.outdated);
         let started = std::time::Instant::now();
-        nanran::commands::start_translation(&state, target.to_string(), true).expect("start");
+        nanran::commands::start_translation(&state, target.to_string(), Mode::Plain, true).expect("start");
         loop {
             std::thread::sleep(std::time::Duration::from_secs(3));
-            let s = nanran::commands::status(&state, target);
+            let s = nanran::commands::status(&state, target, Mode::Plain);
             println!(
                 "{:>4.0}s units {}/{} redo {} running {} error {:?}",
                 started.elapsed().as_secs_f32(),
@@ -207,10 +218,10 @@ fn main() {
         let state = std::sync::Arc::new(nanran::AppState::new(dir).expect("state"));
         state.library.save(&doc).expect("save");
         let started = std::time::Instant::now();
-        nanran::commands::start_translation(&state, doc.id.clone(), false).expect("start");
+        nanran::commands::start_translation(&state, doc.id.clone(), mode(), false).expect("start");
         loop {
             std::thread::sleep(std::time::Duration::from_secs(3));
-            let s = nanran::commands::status(&state, &doc.id);
+            let s = nanran::commands::status(&state, &doc.id, mode());
             println!(
                 "{:>4.0}s batches {}/{} units {} running {} error {:?}",
                 started.elapsed().as_secs_f32(),
@@ -252,16 +263,17 @@ fn main() {
                 &doc.title,
                 &batch,
                 &doc.heading_ids(),
+                mode(),
                 &AtomicBool::new(false),
             )
             .expect("translate");
-            lib.add_translations(&doc.id, &ko)
+            lib.add_translations(&doc.id, mode(), &ko)
                 .expect("save translations");
         }
         println!(
             "saved {} with {} translated units",
             doc.id,
-            lib.translations(&doc.id).len()
+            lib.translations(&doc.id, mode()).len()
         );
         return;
     }
@@ -275,6 +287,7 @@ fn main() {
             &doc.title,
             &batch,
             &doc.heading_ids(),
+            mode(),
             &AtomicBool::new(false),
         )
         .expect("translate");

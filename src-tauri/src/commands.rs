@@ -2,6 +2,7 @@
 
 use crate::library::{Library, Meta};
 use crate::model::{self, Doc};
+use crate::translate::Mode;
 use crate::{arxiv, ask, pdf, recommend, search, translate, update};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -26,7 +27,8 @@ pub(crate) struct Job {
 
 pub struct AppState {
     pub library: Library,
-    pub(crate) jobs: Mutex<HashMap<String, Job>>,
+    /// Keyed by paper id and mode; a translation and an easy explanation can run at once.
+    pub(crate) jobs: Mutex<HashMap<(String, Mode), Job>>,
 }
 
 impl AppState {
@@ -78,9 +80,12 @@ pub fn library_get(state: State<'_, Arc<AppState>>, id: String) -> Result<Doc, S
 
 #[tauri::command]
 pub fn library_remove(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
-    if let Some(job) = state.jobs.lock().unwrap().remove(&id) {
-        job.cancel.store(true, Ordering::Relaxed);
-    }
+    state.jobs.lock().unwrap().retain(|(doc, _), job| {
+        if *doc == id {
+            job.cancel.store(true, Ordering::Relaxed);
+        }
+        *doc != id
+    });
     state.library.remove(&id)
 }
 
@@ -250,50 +255,51 @@ pub async fn open_pdf(
 }
 
 #[tauri::command]
-pub fn translation_cancel(state: State<'_, Arc<AppState>>, id: String) {
-    if let Some(job) = state.jobs.lock().unwrap().get(&id) {
+pub fn translation_cancel(state: State<'_, Arc<AppState>>, id: String, mode: Mode) {
+    if let Some(job) = state.jobs.lock().unwrap().get(&(id, mode)) {
         job.cancel.store(true, Ordering::Relaxed);
     }
 }
 
 /// Translates every unit that has no saved translation yet.
 #[tauri::command]
-pub fn translation_start(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
-    start_translation(state.inner(), id, false)
+pub fn translation_start(state: State<'_, Arc<AppState>>, id: String, mode: Mode) -> Result<(), String> {
+    start_translation(state.inner(), id, mode, false)
 }
 
 /// Translates the whole paper again in the current style, replacing units as they arrive.
 #[tauri::command]
 pub fn translation_redo(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
-    start_translation(state.inner(), id, true)
+    start_translation(state.inner(), id, Mode::Plain, true)
 }
 
 #[tauri::command]
-pub fn translation_status(state: State<'_, Arc<AppState>>, id: String) -> Result<Status, String> {
-    Ok(status(state.inner(), &id))
+pub fn translation_status(state: State<'_, Arc<AppState>>, id: String, mode: Mode) -> Result<Status, String> {
+    Ok(status(state.inner(), &id, mode))
 }
 
-pub fn status(state: &Arc<AppState>, id: &str) -> Status {
-    let units = state.library.translations(id);
+pub fn status(state: &Arc<AppState>, id: &str, mode: Mode) -> Status {
+    let units = state.library.translations(id, mode);
     let jobs = state.jobs.lock().unwrap();
-    let job = jobs.get(id);
+    let job = jobs.get(&(id.to_string(), mode));
     Status {
         total: job.map_or(0, |j| j.total),
         done: job.map_or(0, |j| j.done),
         running: job.is_some_and(|j| j.running),
         error: job.and_then(|j| j.error.clone()),
         redo: job.is_some_and(|j| j.running && j.redo),
-        outdated: !units.is_empty() && state.library.style(id) < translate::STYLE,
+        // Only the plain translation has older styles; easy explanations started at the current one.
+        outdated: mode == Mode::Plain && !units.is_empty() && state.library.style(id) < translate::STYLE,
         units,
     }
 }
 
-pub fn start_translation(state: &Arc<AppState>, id: String, redo: bool) -> Result<(), String> {
+pub fn start_translation(state: &Arc<AppState>, id: String, mode: Mode, redo: bool) -> Result<(), String> {
     let claude = translate::find_claude().ok_or_else(|| {
         "Claude Code CLI를 찾지 못했어요. 설치 후 터미널에서 `claude`로 로그인해 주세요".to_string()
     })?;
     let doc = state.library.doc(&id)?;
-    let have = state.library.translations(&id);
+    let have = state.library.translations(&id, mode);
     let pending: Vec<model::Unit> = doc
         .units()
         .into_iter()
@@ -305,11 +311,12 @@ pub fn start_translation(state: &Arc<AppState>, id: String, redo: bool) -> Resul
     let cancel = Arc::new(AtomicBool::new(false));
     {
         let mut jobs = state.jobs.lock().unwrap();
-        if jobs.get(&id).is_some_and(|j| j.running) {
+        let key = (id.clone(), mode);
+        if jobs.get(&key).is_some_and(|j| j.running) {
             return Ok(());
         }
         jobs.insert(
-            id.clone(),
+            key,
             Job {
                 total: pending.len(),
                 done: 0,
@@ -325,7 +332,7 @@ pub fn start_translation(state: &Arc<AppState>, id: String, redo: bool) -> Resul
     }
     // A paper translated from scratch is entirely in the current style. A redo only counts once
     // every unit has been replaced; until then the old style stays marked as outdated.
-    if have.is_empty() {
+    if mode == Mode::Plain && have.is_empty() {
         state.library.set_style(&id, translate::STYLE)?;
     }
     let state = state.clone();
@@ -342,10 +349,10 @@ pub fn start_translation(state: &Arc<AppState>, id: String, redo: bool) -> Resul
                         let Some(batch) = queue.lock().unwrap().next() else {
                             return;
                         };
-                        match translate::translate_batch(&claude, &doc.title, &batch, &headings, &cancel) {
+                        match translate::translate_batch(&claude, &doc.title, &batch, &headings, mode, &cancel) {
                             Ok(units) => {
-                                let _ = state.library.add_translations(&id, &units);
-                                if let Some(job) = state.jobs.lock().unwrap().get_mut(&id) {
+                                let _ = state.library.add_translations(&id, mode, &units);
+                                if let Some(job) = state.jobs.lock().unwrap().get_mut(&(id.clone(), mode)) {
                                     job.done += batch.len();
                                 }
                             }
@@ -363,7 +370,7 @@ pub fn start_translation(state: &Arc<AppState>, id: String, redo: bool) -> Resul
         if redo && error.is_none() && !cancel.load(Ordering::Relaxed) {
             let _ = state.library.set_style(&id, translate::STYLE);
         }
-        if let Some(job) = state.jobs.lock().unwrap().get_mut(&id) {
+        if let Some(job) = state.jobs.lock().unwrap().get_mut(&(id.clone(), mode)) {
             job.running = false;
             job.error = error;
         }

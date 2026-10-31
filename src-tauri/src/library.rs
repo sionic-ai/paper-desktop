@@ -1,6 +1,7 @@
 //! Papers and their translations as JSON files under the app data directory.
 
 use crate::model::{Doc, Unit};
+use crate::translate::Mode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -21,6 +22,13 @@ pub struct Library {
     root: PathBuf,
     /// Serializes translation-file read-modify-write across worker threads.
     write: Mutex<()>,
+}
+
+fn suffix(mode: Mode) -> &'static str {
+    match mode {
+        Mode::Plain => "ko",
+        Mode::Easy => "easy",
+    }
 }
 
 fn valid_id(id: &str) -> bool {
@@ -101,21 +109,22 @@ impl Library {
         serde_json::from_slice(&bytes).map_err(|_| "저장된 논문이 손상됐어요".to_string())
     }
 
-    pub fn translations(&self, id: &str) -> HashMap<u32, Vec<String>> {
-        self.path(id, "ko")
+    /// Saved Korean text for one mode: `<id>.ko.json` (translation) or `<id>.easy.json` (easy explanation).
+    pub fn translations(&self, id: &str, mode: Mode) -> HashMap<u32, Vec<String>> {
+        self.path(id, suffix(mode))
             .ok()
             .and_then(|p| std::fs::read(p).ok())
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default()
     }
 
-    pub fn add_translations(&self, id: &str, units: &[Unit]) -> Result<(), String> {
+    pub fn add_translations(&self, id: &str, mode: Mode, units: &[Unit]) -> Result<(), String> {
         let _guard = self.write.lock().unwrap();
-        let mut all = self.translations(id);
+        let mut all = self.translations(id, mode);
         for u in units {
             all.insert(u.id, u.sentences.clone());
         }
-        write_atomic(&self.path(id, "ko")?, &serde_json::to_vec(&all).unwrap())
+        write_atomic(&self.path(id, suffix(mode))?, &serde_json::to_vec(&all).unwrap())
     }
 
     /// Writing-style version of the saved translations (see `translate::STYLE`); 1 when unrecorded.
@@ -133,7 +142,7 @@ impl Library {
 
     pub fn remove(&self, id: &str) -> Result<(), String> {
         let _guard = self.write.lock().unwrap();
-        for suffix in ["doc", "meta", "ko", "style"] {
+        for suffix in ["doc", "meta", "ko", "easy", "style"] {
             let _ = std::fs::remove_file(self.path(id, suffix)?);
         }
         Ok(())
@@ -166,13 +175,15 @@ mod tests {
         assert_eq!(lib.list()[0].units, 1);
         lib.add_translations(
             "pdf-abc",
+            Mode::Plain,
             &[Unit {
                 id: 0,
                 sentences: vec!["하나.".into(), "둘.".into()],
             }],
         )
         .unwrap();
-        assert_eq!(lib.translations("pdf-abc")[&0].len(), 2);
+        assert_eq!(lib.translations("pdf-abc", Mode::Plain)[&0].len(), 2);
+        assert!(lib.translations("pdf-abc", Mode::Easy).is_empty());
         assert_eq!(lib.style("pdf-abc"), 1);
         lib.set_style("pdf-abc", 2).unwrap();
         assert_eq!(lib.style("pdf-abc"), 2);
