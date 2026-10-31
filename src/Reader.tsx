@@ -118,7 +118,7 @@ const GAP = 48
 const SPLIT_MIN = 0.25
 const SPLIT_MAX = 0.75
 
-export function Reader({ doc, ko, swapped }: { doc: Doc; ko: Ko; swapped: boolean }) {
+export function Reader({ doc, ko, swapped, koLabel }: { doc: Doc; ko: Ko; swapped: boolean; koLabel: string }) {
   const root = useRef<HTMLDivElement>(null)
   const style = useRef<HTMLStyleElement>(null)
   // Share of the width taken by the left column; drag the gap between the columns to change it.
@@ -184,7 +184,7 @@ export function Reader({ doc, ko, swapped }: { doc: Doc; ko: Ko; swapped: boolea
       />
       <div className="cols-head">
         <span className="en">원문</span>
-        <span className="ko">한국어</span>
+        <span className="ko">{koLabel}</span>
       </div>
       {doc.blocks.map((block, i) => (
         <KoSlice key={i} block={block} math={doc.math} ko={sliceKo(ko, unitIds(block))} />

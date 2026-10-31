@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, arxivDocId, arxivIdOf, errorText, looksLikeArxivId, type Doc, type Hit, type Meta, type Status } from './api'
+import { api, arxivDocId, arxivIdOf, errorText, looksLikeArxivId, type Doc, type Hit, type Meta, type Mode, type Status } from './api'
 import { Reader } from './Reader'
 import { SearchResults, type SearchState } from './Search'
 import { AiChat, type ChatState } from './Ai'
@@ -122,11 +122,58 @@ function onlyHeadingsMissing(doc: Doc, ko: Ko): boolean {
   return headingMissing
 }
 
+const modeKey = (id: string) => `nanran.mode.${id}`
+
+/** 번역하기 → pick a faithful translation or an easy explanation. */
+function StartMenu({ onPick }: { onPick: (mode: Mode) => void }) {
+  const [openMenu, setOpenMenu] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!openMenu) return
+    const close = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpenMenu(false)
+    }
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpenMenu(false)
+    document.addEventListener('pointerdown', close)
+    document.addEventListener('keydown', esc)
+    return () => {
+      document.removeEventListener('pointerdown', close)
+      document.removeEventListener('keydown', esc)
+    }
+  }, [openMenu])
+  const pick = (m: Mode) => {
+    setOpenMenu(false)
+    onPick(m)
+  }
+  return (
+    <div className="start" ref={box}>
+      <button className="primary" onClick={() => setOpenMenu(o => !o)} aria-haspopup="menu" aria-expanded={openMenu}>
+        번역하기 <span className="caret" aria-hidden="true">▾</span>
+      </button>
+      {openMenu && (
+        <div className="start-menu" role="menu">
+          <button role="menuitem" onClick={() => pick('plain')}>
+            <b>그냥 번역</b>
+            <span>원문 그대로 옮겨요</span>
+          </button>
+          <button role="menuitem" onClick={() => pick('easy')}>
+            <b>쉽게 번역</b>
+            <span>어려운 용어를 풀어 쉽게 설명해요</span>
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function App() {
   const [papers, setPapers] = useState<Meta[]>([])
   const [doc, setDoc] = useState<Doc | null>(null)
   const [ko, setKo] = useState<Ko>({})
   const [status, setStatus] = useState<Status | null>(null)
+  const [mode, setMode] = useState<Mode>('plain')
+  // Whether the mode not on screen already has text or a running job, so both can be switched between.
+  const [otherHas, setOtherHas] = useState(false)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -209,26 +256,32 @@ export function App() {
     return () => window.removeEventListener('focus', checkClaude)
   }, [checkClaude])
 
-  const open = useCallback(async (id: string, startTranslation: boolean | 'redo') => {
+  /** Opens a paper in `want` mode (default: the one last read for it) and optionally starts that mode's job. */
+  const open = useCallback(async (id: string, startTranslation: boolean | 'redo', want?: Mode) => {
     const seq = ++openSeq.current
     setError(null)
     try {
       const d = await api.get(id)
       if (seq !== openSeq.current) return
+      const m: Mode = want ?? (localStorage.getItem(modeKey(id)) === 'easy' ? 'easy' : 'plain')
+      localStorage.setItem(modeKey(id), m)
       setDoc(d)
       setView('doc')
+      setMode(m)
       setKo({})
       setStatus(null)
-      document.querySelector('.main')?.scrollTo(0, 0)
+      if (!want) document.querySelector('.main')?.scrollTo(0, 0)
       if (startTranslation === 'redo') await api.retranslate(id)
-      else if (startTranslation) await api.translate(id)
-      let s = await api.status(id)
+      else if (startTranslation) await api.translate(id, m)
+      let s = await api.status(id, m)
       // Papers translated before headings were translated (in any style): fill in just the headings.
-      if (!s.running && onlyHeadingsMissing(d, s.units)) {
-        await api.translate(id)
-        s = await api.status(id)
+      if (m === 'plain' && !s.running && onlyHeadingsMissing(d, s.units)) {
+        await api.translate(id, m)
+        s = await api.status(id, m)
       }
+      const other = await api.status(id, m === 'plain' ? 'easy' : 'plain')
       if (seq !== openSeq.current) return
+      setOtherHas(other.running || Object.keys(other.units).length > 0)
       setStatus(s)
       setKo(s.units)
     } catch (e) {
@@ -242,7 +295,7 @@ export function App() {
     const id = doc.id
     const timer = setInterval(async () => {
       try {
-        const s = await api.status(id)
+        const s = await api.status(id, mode)
         setStatus(s)
         setKo(prev => mergeKo(prev, s.units))
       } catch {
@@ -250,7 +303,7 @@ export function App() {
       }
     }, 1200)
     return () => clearInterval(timer)
-  }, [doc, status?.running])
+  }, [doc, mode, status?.running])
 
   const imported = async (meta: Meta | null) => {
     if (!meta) return
@@ -449,21 +502,38 @@ export function App() {
           )}
           {view === 'doc' && doc && (
             <div className="progress">
+              {(translated > 0 || status?.running || otherHas) && (
+                <div className="mode-switch" role="group" aria-label="한국어 칸에 보일 내용">
+                  {(['plain', 'easy'] as const).map(m => (
+                    <button
+                      key={m}
+                      className={mode === m ? 'on' : ''}
+                      aria-pressed={mode === m}
+                      onClick={() => mode !== m && void open(doc.id, false, m)}
+                      title={m === 'plain' ? '원문을 그대로 옮긴 번역을 봐요' : '어려운 용어를 풀어 쉽게 설명한 번역을 봐요'}
+                    >
+                      {m === 'plain' ? '번역' : '쉽게 읽기'}
+                    </button>
+                  ))}
+                </div>
+              )}
               {status?.running && status.redo ? (
                 <>
                   <span className="meter"><span style={{ width: `${status.total ? (status.done / status.total) * 100 : 0}%` }} /></span>
                   <span>다시 번역 중 {status.done}/{status.total}</span>
-                  <button onClick={() => void api.cancel(doc.id)}>멈춤</button>
+                  <button onClick={() => void api.cancel(doc.id, mode)}>멈춤</button>
                 </>
               ) : status?.running ? (
                 <>
                   <span className="meter"><span style={{ width: `${total ? (translated / total) * 100 : 0}%` }} /></span>
-                  <span>번역 중 {translated}/{total}</span>
-                  <button onClick={() => void api.cancel(doc.id)}>멈춤</button>
+                  <span>{mode === 'easy' ? '쉽게 번역 중' : '번역 중'} {translated}/{total}</span>
+                  <button onClick={() => void api.cancel(doc.id, mode)}>멈춤</button>
                 </>
+              ) : translated === 0 && !otherHas ? (
+                <StartMenu onPick={m => void open(doc.id, true, m)} />
               ) : remaining > 0 && !status?.outdated ? (
-                <button className="primary" onClick={() => void open(doc.id, true)}>
-                  {translated === 0 ? '번역하기' : `이어서 번역 (${remaining}개 남음)`}
+                <button className="primary" onClick={() => void open(doc.id, true, mode)}>
+                  {translated > 0 ? `이어서 번역 (${remaining}개 남음)` : mode === 'easy' ? '쉽게 번역하기' : '번역하기'}
                 </button>
               ) : status?.outdated ? (
                 <button
@@ -509,7 +579,7 @@ export function App() {
             onMore={() => void runSearch(search.query, search.hits.length)}
           />
         ) : doc ? (
-          <Reader doc={doc} ko={ko} swapped={swapped} />
+          <Reader doc={doc} ko={ko} swapped={swapped} koLabel={mode === 'easy' ? '쉽게 읽기' : '한국어'} />
         ) : (
           !busy && (
             <div className="welcome">

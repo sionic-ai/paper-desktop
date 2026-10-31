@@ -2,6 +2,9 @@ import { Channel, invoke } from '@tauri-apps/api/core'
 
 export type Unit = { id: number; sentences: string[] }
 
+/** Korean text kind: a faithful translation or an easy explanation of each sentence. */
+export type Mode = 'plain' | 'easy'
+
 export type Block =
   | { kind: 'heading'; level: number; unit: Unit }
   | { kind: 'para'; unit: Unit }
@@ -48,10 +51,10 @@ export const api = {
     invoke<{ reply: string; picks: { hit: Hit; why: string }[] }>('ai_recommend', { request, history }),
   openArxivPage: (id: string) => invoke<void>('open_arxiv_page', { id }),
   openPdf: () => invoke<Meta | null>('open_pdf'),
-  translate: (id: string) => invoke<void>('translation_start', { id }),
+  translate: (id: string, mode: Mode) => invoke<void>('translation_start', { id, mode }),
   retranslate: (id: string) => invoke<void>('translation_redo', { id }),
-  status: (id: string) => invoke<Status>('translation_status', { id }),
-  cancel: (id: string) => invoke<void>('translation_cancel', { id }),
+  status: (id: string, mode: Mode) => invoke<Status>('translation_status', { id, mode }),
+  cancel: (id: string, mode: Mode) => invoke<void>('translation_cancel', { id, mode }),
   updateCheck: () => invoke<{ current: string; latest: string | null; available: boolean }>('update_check'),
   /** Runs the installer detached; it quits this app, replaces it and reopens the new version. */
   updateInstall: () => invoke<void>('update_install'),
