@@ -124,8 +124,8 @@ function onlyHeadingsMissing(doc: Doc, ko: Ko): boolean {
 
 const modeKey = (id: string) => `nanran.mode.${id}`
 
-/** 번역하기 → pick a faithful translation or an easy explanation. */
-function StartMenu({ onPick }: { onPick: (mode: Mode) => void }) {
+/** 번역하기 (or 새 문체로 다시 번역) → pick a faithful translation or an easy explanation. */
+function StartMenu({ label, title, onPick }: { label: string; title?: string; onPick: (mode: Mode) => void }) {
   const [openMenu, setOpenMenu] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -147,8 +147,8 @@ function StartMenu({ onPick }: { onPick: (mode: Mode) => void }) {
   }
   return (
     <div className="start" ref={box}>
-      <button className="primary" onClick={() => setOpenMenu(o => !o)} aria-haspopup="menu" aria-expanded={openMenu}>
-        번역하기 <span className="caret" aria-hidden="true">▾</span>
+      <button className="primary" onClick={() => setOpenMenu(o => !o)} aria-haspopup="menu" aria-expanded={openMenu} title={title}>
+        {label} <span className="caret" aria-hidden="true">▾</span>
       </button>
       {openMenu && (
         <div className="start-menu" role="menu">
@@ -530,19 +530,17 @@ export function App() {
                   <button onClick={() => void api.cancel(doc.id, mode)}>멈춤</button>
                 </>
               ) : translated === 0 && !otherHas ? (
-                <StartMenu onPick={m => void open(doc.id, true, m)} />
+                <StartMenu label="번역하기" onPick={m => void open(doc.id, true, m)} />
               ) : remaining > 0 && !status?.outdated ? (
                 <button className="primary" onClick={() => void open(doc.id, true, mode)}>
                   {translated > 0 ? `이어서 번역 (${remaining}개 남음)` : mode === 'easy' ? '쉽게 번역하기' : '번역하기'}
                 </button>
               ) : status?.outdated ? (
-                <button
-                  className="primary"
-                  onClick={() => void open(doc.id, 'redo')}
+                <StartMenu
+                  label="새 문체로 다시 번역"
                   title="읽기 편한 합니다체로 처음부터 다시 번역해요. 끝날 때까지 지금 번역이 그대로 보여요"
-                >
-                  새 문체로 다시 번역
-                </button>
+                  onPick={m => void (m === 'plain' ? open(doc.id, 'redo', 'plain') : open(doc.id, true, 'easy'))}
+                />
               ) : (
                 <span className="done">번역 완료</span>
               )}
