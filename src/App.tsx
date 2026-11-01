@@ -547,8 +547,11 @@ export function App() {
                   title="읽기 편한 합니다체로 처음부터 다시 번역해요. 끝날 때까지 지금 번역이 그대로 보여요"
                   onPick={m => void (m === 'plain' ? open(doc.id, 'redo', 'plain') : open(doc.id, true, 'easy'))}
                 />
-              ) : (
-                <span className="done">번역 완료</span>
+              ) : null}
+              {!status?.running && (
+                <button className="summary-btn" onClick={() => assistant.summarize()} title="논문 내용을 한국어 글 한 편으로 정리해요">
+                  <span className="spark" aria-hidden="true">✦</span> 요약하기
+                </button>
               )}
             </div>
           )}

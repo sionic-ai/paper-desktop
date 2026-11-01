@@ -3,7 +3,7 @@ import { api, errorText } from './api'
 
 export type AskMsg =
   | { role: 'user'; text: string; quote: string | null }
-  | { role: 'assistant'; text: string; streaming?: boolean }
+  | { role: 'assistant'; text: string; streaming?: boolean; summaryOf?: string }
   | { role: 'error'; text: string }
 
 export type Ask = {
@@ -11,7 +11,11 @@ export type Ask = {
   loading: boolean
   open: boolean
   setOpen: (open: boolean) => void
+  /** The panel opens wider while it holds a paper summary. */
+  wide: boolean
   send: (question: string, quote: string | null) => void
+  /** Shows the paper's summary post: the one already in the chat, else the saved one, else a new one. */
+  summarize: (fresh?: boolean) => void
   reset: () => void
 }
 
@@ -23,7 +27,41 @@ export function useAsk(docId: string | null): Ask {
   const [messages, setMessages] = useState<AskMsg[]>([])
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
+  const [wide, setWide] = useState(false)
   const seq = useRef(0)
+
+  /** Adds `asked` to the chat and streams `run`'s answer in after it. */
+  const stream = useCallback(
+    (asked: AskMsg, summaryOf: string | undefined, run: (onDelta: (d: string) => void) => Promise<{ reply: string }>) => {
+      const id = ++seq.current
+      setMessages(ms => [...ms, asked])
+      setLoading(true)
+      // The streaming answer is always the last message while this request is current.
+      const write = (f: (m: AskMsg | undefined) => AskMsg | null) =>
+        setMessages(ms => {
+          const last = ms[ms.length - 1]
+          const live = last?.role === 'assistant' && last.streaming ? last : undefined
+          const next = f(live)
+          const base = live ? ms.slice(0, -1) : ms
+          return next ? [...base, next] : base
+        })
+      run(d => {
+        if (id === seq.current) write(m => ({ role: 'assistant', text: (m?.text ?? '') + d, streaming: true, summaryOf }))
+      })
+        .then(r => {
+          if (id === seq.current) write(() => ({ role: 'assistant', text: r.reply, summaryOf }))
+        })
+        .catch(err => {
+          // Keep whatever was already written, then say what went wrong.
+          if (id === seq.current) write(m => (m ? { ...m, streaming: false } : null))
+          if (id === seq.current) setMessages(ms => [...ms, { role: 'error', text: errorText(err) }])
+        })
+        .finally(() => {
+          if (id === seq.current) setLoading(false)
+        })
+    },
+    []
+  )
 
   const send = useCallback(
     (question: string, quote: string | null) => {
@@ -37,44 +75,33 @@ export function useAsk(docId: string | null): Ask {
           role: m.role,
           text: m.role === 'user' && m.quote ? `> ${m.quote.slice(0, QUOTE_IN_HISTORY)}\n\n${m.text}` : m.text,
         }))
-      const id = ++seq.current
-      setMessages(ms => [...ms, { role: 'user', text: q, quote }])
-      setLoading(true)
-      // The streaming answer is always the last message while this request is current.
-      const write = (f: (m: AskMsg | undefined) => AskMsg | null) =>
-        setMessages(ms => {
-          const last = ms[ms.length - 1]
-          const live = last?.role === 'assistant' && last.streaming ? last : undefined
-          const next = f(live)
-          const base = live ? ms.slice(0, -1) : ms
-          return next ? [...base, next] : base
-        })
-      api
-        .ask(q, quote, docId, history, d => {
-          if (id === seq.current) write(m => ({ role: 'assistant', text: (m?.text ?? '') + d, streaming: true }))
-        })
-        .then(r => {
-          if (id === seq.current) write(() => ({ role: 'assistant', text: r.reply }))
-        })
-        .catch(err => {
-          // Keep whatever was already written, then say what went wrong.
-          if (id === seq.current) write(m => (m ? { ...m, streaming: false } : null))
-          if (id === seq.current) setMessages(ms => [...ms, { role: 'error', text: errorText(err) }])
-        })
-        .finally(() => {
-          if (id === seq.current) setLoading(false)
-        })
+      stream({ role: 'user', text: q, quote }, undefined, d => api.ask(q, quote, docId, history, d))
     },
-    [docId, loading, messages]
+    [docId, loading, messages, stream]
+  )
+
+  const summarize = useCallback(
+    (fresh = false) => {
+      setOpen(true)
+      setWide(true)
+      if (!docId || loading) return
+      // Already in this chat: just show it again.
+      if (!fresh && messages.some(m => m.role === 'assistant' && m.summaryOf === docId)) return
+      stream({ role: 'user', text: fresh ? '요약 다시 써 줘' : '이 논문 요약해 줘', quote: null }, docId, d =>
+        api.summarize(docId, fresh, d)
+      )
+    },
+    [docId, loading, messages, stream]
   )
 
   const reset = useCallback(() => {
     seq.current++
     setMessages([])
     setLoading(false)
+    setWide(false)
   }, [])
 
-  return { messages, loading, open, setOpen, send, reset }
+  return { messages, loading, open, setOpen, wide, send, summarize, reset }
 }
 
 // Like Claude Code's status line: a turning glyph, a playful verb, and the elapsed time.
@@ -117,9 +144,37 @@ function SendIcon() {
   )
 }
 
+const MIN_W = 320
+const MIN_H = 260
+const SIZE_KEY = 'nanran.askSize'
+type Size = { w: number; h: number }
+
+function storedSize(): Size | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(SIZE_KEY) ?? 'null') as Partial<Size> | null
+    return v && typeof v.w === 'number' && typeof v.h === 'number' && v.w >= MIN_W && v.h >= MIN_H ? { w: v.w, h: v.h } : null
+  } catch {
+    return null
+  }
+}
+
 /** Round ✦ button at the bottom right; opens a composer that grows into a chat panel once a question is sent. */
 export function FloatingAssistant({ ask, docTitle }: { ask: Ask; docTitle: string | null }) {
-  const { messages, loading, open, setOpen, send, reset } = ask
+  const { messages, loading, open, setOpen, wide, send, summarize, reset } = ask
+  // Set by dragging the panel's top or left edge; null keeps the CSS size. The chat size is
+  // remembered across launches; the wider summary size lasts until the conversation is cleared.
+  const [chatSize, setChatSize] = useState<Size | null>(storedSize)
+  const [wideSize, setWideSize] = useState<Size | null>(null)
+  useEffect(() => {
+    if (!wide) setWideSize(null)
+  }, [wide])
+  const size = wide ? wideSize : chatSize
+  const keepSize = (s: Size | null) => {
+    if (wide) return setWideSize(s)
+    setChatSize(s)
+    if (s) localStorage.setItem(SIZE_KEY, JSON.stringify(s))
+    else localStorage.removeItem(SIZE_KEY)
+  }
   const [text, setText] = useState('')
   const box = useRef<HTMLTextAreaElement>(null)
   const log = useRef<HTMLDivElement>(null)
@@ -166,6 +221,39 @@ export function FloatingAssistant({ ask, docTitle }: { ask: Ask; docTitle: strin
     setText('')
   }
 
+  // The panel is pinned to the bottom right, so its top and left edges are the ones that move.
+  const resize = (edge: 'l' | 't' | 'lt') => (e: React.PointerEvent) => {
+    const el = root.current
+    if (e.button !== 0 || !el) return
+    e.preventDefault()
+    const handle = e.currentTarget as HTMLElement
+    handle.setPointerCapture(e.pointerId)
+    const r = el.getBoundingClientRect()
+    const cursor = edge === 'l' ? 'col-resizing' : edge === 't' ? 'row-resizing' : 'corner-resizing'
+    el.classList.add('resizing')
+    document.documentElement.classList.add(cursor)
+    let w = r.width
+    let h = r.height
+    const move = (ev: PointerEvent) => {
+      if (edge !== 't') w = Math.round(Math.min(Math.max(r.right - ev.clientX, MIN_W), r.right - 16))
+      if (edge !== 'l') h = Math.round(Math.min(Math.max(r.bottom - ev.clientY, MIN_H), r.bottom - 16))
+      el.style.width = `${w}px`
+      el.style.height = `${h}px`
+    }
+    const up = () => {
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', up)
+      handle.removeEventListener('pointercancel', up)
+      el.classList.remove('resizing')
+      document.documentElement.classList.remove(cursor)
+      keepSize({ w, h })
+    }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', up)
+    handle.addEventListener('pointercancel', up)
+  }
+  const lastSummary = messages.reduce((n, m, i) => (m.role === 'assistant' && m.summaryOf ? i : n), -1)
+
   if (!open) {
     return (
       <button className="asst-fab" onClick={() => setOpen(true)} title="Claude에게 물어보기" aria-label="Claude에게 물어보기">
@@ -176,9 +264,25 @@ export function FloatingAssistant({ ask, docTitle }: { ask: Ask; docTitle: strin
   }
 
   return (
-    <div ref={root} className={`asst${expanded ? ' expanded' : ''}`} role="dialog" aria-label="Claude에게 질문">
+    <div
+      ref={root}
+      className={`asst${expanded ? ' expanded' : ''}${expanded && wide ? ' wide' : ''}`}
+      style={expanded && size ? { width: `min(${size.w}px, calc(100vw - 40px))`, height: `min(${size.h}px, calc(100vh - 40px))` } : undefined}
+      role="dialog"
+      aria-label="Claude에게 질문"
+    >
       {expanded && (
         <>
+          {(['l', 't', 'lt'] as const).map(edge => (
+            <div
+              key={edge}
+              className={`asst-edge ${edge}`}
+              onPointerDown={resize(edge)}
+              onDoubleClick={() => keepSize(null)}
+              title="끌어서 크기 조절, 두 번 누르면 기본 크기"
+              aria-hidden="true"
+            />
+          ))}
           <header className="asst-head">
             <span className="asst-title"><span className="spark" aria-hidden="true">✦</span> Claude에게 질문</span>
             {docTitle ? <span className="asst-chip" title={docTitle} lang="en">{docTitle}</span> : <span className="asst-gap" />}
@@ -203,9 +307,14 @@ export function FloatingAssistant({ ask, docTitle }: { ask: Ask; docTitle: strin
                 </div>
               ) : (
                 <div key={i} className="msg bot">
-                  <div className={`bubble${m.role === 'error' ? ' error-bubble' : ''}${m.role === 'assistant' && m.streaming ? ' streaming' : ''}`}>
+                  <div
+                    className={`bubble${m.role === 'error' ? ' error-bubble' : ''}${m.role === 'assistant' && m.streaming ? ' streaming' : ''}${m.role === 'assistant' && m.summaryOf ? ' summary' : ''}`}
+                  >
                     {m.role === 'error' ? m.text : <Reply text={m.text} />}
                   </div>
+                  {i === lastSummary && m.role === 'assistant' && !m.streaming && !loading && (
+                    <button className="asst-redo" onClick={() => summarize(true)}>다시 요약</button>
+                  )}
                 </div>
               )
             )}
@@ -400,7 +509,21 @@ export function SelectionAsk({ busy, resetKey, onAsk }: { busy: boolean; resetKe
   )
 }
 
-/** Plain-text reply: blank lines split paragraphs, `- ` lines become a list with a hanging indent. */
+/** `문제: …` → a bold label and the rest; anything else unchanged. */
+function Labeled({ text }: { text: string }) {
+  const m = /^([^:\s][^:]{0,7}):\s+(.*)$/s.exec(text)
+  if (!m) return <>{text}</>
+  return (
+    <>
+      <span className="asst-label">{m[1]}:</span> {m[2]}
+    </>
+  )
+}
+
+/**
+ * Plain-text reply: blank lines split paragraphs, `- ` lines become a list with a hanging indent,
+ * and a lone short `1. …` or `마치며:` line becomes a section title.
+ */
 function Reply({ text }: { text: string }) {
   const blocks = text.trim().split(/\n\s*\n/)
   return (
@@ -408,7 +531,17 @@ function Reply({ text }: { text: string }) {
       {blocks.map((b, i) => {
         const lines = b.split('\n').filter(l => l.trim())
         if (lines.length && lines.every(l => /^\s*[-•*]\s+/.test(l))) {
-          return <ul key={i} className="asst-list">{lines.map((l, j) => <li key={j}>{l.replace(/^\s*[-•*]\s+/, '')}</li>)}</ul>
+          return (
+            <ul key={i} className="asst-list">
+              {lines.map((l, j) => (
+                <li key={j}><Labeled text={l.replace(/^\s*[-•*]\s+/, '')} /></li>
+              ))}
+            </ul>
+          )
+        }
+        const one = lines.length === 1 ? lines[0]!.trim() : ''
+        if ((/^\d{1,2}\.\s+\S/.test(one) && one.length <= 100) || /^\S.{0,11}:$/.test(one)) {
+          return <p key={i} className="asst-p asst-h">{one}</p>
         }
         return <p key={i} className="asst-p">{lines.join('\n')}</p>
       })}

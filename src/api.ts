@@ -63,6 +63,14 @@ export const api = {
   updateCheck: () => invoke<{ current: string; latest: string | null; available: boolean }>('update_check'),
   /** Runs the installer detached; it quits this app, replaces it and reopens the new version. */
   updateInstall: () => invoke<void>('update_install'),
+  /** Korean explainer post about a saved paper: the saved one unless `fresh`, else a new one streamed over `onDelta`. */
+  summarize: (docId: string, fresh: boolean, onDelta: (text: string) => void) => {
+    const onEvent = new Channel<{ kind: 'delta'; text: string }>()
+    onEvent.onmessage = e => {
+      if (e.kind === 'delta') onDelta(e.text)
+    }
+    return invoke<{ reply: string; saved: boolean }>('summarize_paper', { docId, fresh, onEvent })
+  },
   /** `onDelta` gets each piece of the answer as Claude writes it; the promise resolves with the full answer. */
   ask: (
     question: string,
