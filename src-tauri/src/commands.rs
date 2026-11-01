@@ -1,6 +1,6 @@
 //! Tauri commands and the translation job runner.
 
-use crate::library::{Library, Meta};
+use crate::library::{Folder, Library, Meta};
 use crate::model::{self, Doc};
 use crate::translate::Mode;
 use crate::{arxiv, ask, pdf, recommend, search, translate, update};
@@ -76,6 +76,16 @@ pub fn library_list(state: State<'_, Arc<AppState>>) -> Vec<Meta> {
 #[tauri::command]
 pub fn library_get(state: State<'_, Arc<AppState>>, id: String) -> Result<Doc, String> {
     state.library.doc(&id)
+}
+
+#[tauri::command]
+pub fn library_folders(state: State<'_, Arc<AppState>>) -> Vec<Folder> {
+    state.library.folders()
+}
+
+#[tauri::command]
+pub fn library_set_folders(state: State<'_, Arc<AppState>>, folders: Vec<Folder>) -> Result<Vec<Folder>, String> {
+    state.library.set_folders(folders)
 }
 
 #[tauri::command]

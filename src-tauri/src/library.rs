@@ -18,6 +18,42 @@ pub struct Meta {
     pub units: usize,
 }
 
+/// A sidebar folder. Its first paper is the one still shown when the folder is folded.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Folder {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub papers: Vec<String>,
+    #[serde(default)]
+    pub open: bool,
+}
+
+const MAX_FOLDERS: usize = 200;
+
+/// Drops bad ids and repeats, so each paper sits in at most one folder.
+fn clean_folders(folders: Vec<Folder>) -> Vec<Folder> {
+    let mut seen_folder = std::collections::HashSet::new();
+    let mut seen_paper = std::collections::HashSet::new();
+    folders
+        .into_iter()
+        .filter(|f| valid_id(&f.id) && seen_folder.insert(f.id.clone()))
+        .take(MAX_FOLDERS)
+        .map(|f| {
+            let name: String = f.name.trim().chars().take(60).collect();
+            Folder {
+                name: if name.is_empty() { "새 폴더".into() } else { name },
+                papers: f
+                    .papers
+                    .into_iter()
+                    .filter(|p| valid_id(p) && seen_paper.insert(p.clone()))
+                    .collect(),
+                ..f
+            }
+        })
+        .collect()
+}
+
 pub struct Library {
     root: PathBuf,
     /// Serializes translation-file read-modify-write across worker threads.
@@ -145,7 +181,38 @@ impl Library {
         for suffix in ["doc", "meta", "ko", "easy", "style"] {
             let _ = std::fs::remove_file(self.path(id, suffix)?);
         }
+        let mut folders = self.folders();
+        if folders.iter().any(|f| f.papers.iter().any(|p| p == id)) {
+            for f in &mut folders {
+                f.papers.retain(|p| p != id);
+            }
+            self.write_folders(&folders)?;
+        }
         Ok(())
+    }
+
+    fn folders_path(&self) -> PathBuf {
+        self.root.join("folders.json")
+    }
+
+    /// Sidebar folders in display order (`folders.json`); empty when there are none yet.
+    pub fn folders(&self) -> Vec<Folder> {
+        std::fs::read(self.folders_path())
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
+    }
+
+    /// Replaces every folder at once and returns what was kept.
+    pub fn set_folders(&self, folders: Vec<Folder>) -> Result<Vec<Folder>, String> {
+        let _guard = self.write.lock().unwrap();
+        let folders = clean_folders(folders);
+        self.write_folders(&folders)?;
+        Ok(folders)
+    }
+
+    fn write_folders(&self, folders: &[Folder]) -> Result<(), String> {
+        write_atomic(&self.folders_path(), &serde_json::to_vec(folders).unwrap())
     }
 }
 
@@ -187,8 +254,22 @@ mod tests {
         assert_eq!(lib.style("pdf-abc"), 1);
         lib.set_style("pdf-abc", 2).unwrap();
         assert_eq!(lib.style("pdf-abc"), 2);
+        let f = |id: &str, papers: &[&str]| Folder {
+            id: id.into(),
+            name: format!("  {id}  "),
+            papers: papers.iter().map(|p| p.to_string()).collect(),
+            open: false,
+        };
+        let kept = lib
+            .set_folders(vec![f("a", &["pdf-abc", "x"]), f("b", &["pdf-abc", "../y"]), f("a", &[])])
+            .unwrap();
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[0].name, "a");
+        assert_eq!(kept[1].papers, Vec::<String>::new());
+        assert_eq!(lib.folders(), kept);
         lib.remove("pdf-abc").unwrap();
         assert!(lib.list().is_empty());
+        assert_eq!(lib.folders()[0].papers, vec!["x".to_string()]);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

@@ -16,6 +16,8 @@ fn main() {
             nanran::commands::library_list,
             nanran::commands::library_get,
             nanran::commands::library_remove,
+            nanran::commands::library_folders,
+            nanran::commands::library_set_folders,
             nanran::commands::open_arxiv,
             nanran::commands::open_pdf,
             nanran::commands::arxiv_search,
