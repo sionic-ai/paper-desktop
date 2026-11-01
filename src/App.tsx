@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, arxivDocId, arxivIdOf, errorText, looksLikeArxivId, type Doc, type Hit, type Meta, type Mode, type Status } from './api'
+import { api, arxivDocId, arxivIdOf, errorText, looksLikeArxivId, type Doc, type Folder, type Hit, type Meta, type Mode, type Status } from './api'
 import { Reader } from './Reader'
+import { PaperList } from './Papers'
 import { SearchResults, type SearchState } from './Search'
 import { AiChat, type ChatState } from './Ai'
 import { FloatingAssistant, SelectionAsk, useAsk } from './Assistant'
@@ -168,6 +169,7 @@ function StartMenu({ label, title, onPick }: { label: string; title?: string; on
 
 export function App() {
   const [papers, setPapers] = useState<Meta[]>([])
+  const [folders, setFolders] = useState<Folder[]>([])
   const [doc, setDoc] = useState<Doc | null>(null)
   const [ko, setKo] = useState<Ko>({})
   const [status, setStatus] = useState<Status | null>(null)
@@ -241,7 +243,16 @@ export function App() {
   const shownDoc = view === 'doc' ? doc : null
   const assistant = useAsk(shownDoc?.id ?? null)
 
-  const refreshList = useCallback(() => api.list().then(setPapers).catch(() => {}), [])
+  const refreshList = useCallback(
+    () =>
+      Promise.all([api.list().then(setPapers), api.folders().then(setFolders)]).catch(() => {}),
+    []
+  )
+  // Show the change at once, then keep what Rust saved (it drops repeats and bad ids).
+  const saveFolders = useCallback((next: Folder[]) => {
+    setFolders(next)
+    api.setFolders(next).then(setFolders).catch(e => setError(errorText(e)))
+  }, [])
   useEffect(() => void refreshList(), [refreshList])
 
   // Translation and AI search need a logged-in Claude Code CLI; say so up front instead of on first use.
@@ -449,19 +460,14 @@ export function App() {
             <span className="n">{search.loading && !search.hits.length ? '…' : search.total.toLocaleString()}</span>
           </button>
         )}
-        <div className="list-label">내 논문</div>
-        <ul className="papers">
-          {papers.map(p => (
-            <li key={p.id} className={view === 'doc' && doc?.id === p.id ? 'active' : ''}>
-              <button className="paper" onClick={() => void open(p.id, false)} title={p.title}>
-                <span className="t">{p.title}</span>
-                <span className="src">{p.source.split('/').pop()}</span>
-              </button>
-              <button className="x" onClick={() => void remove(p.id)} aria-label={`${p.title} 삭제`}>×</button>
-            </li>
-          ))}
-          {papers.length === 0 && <li className="empty">아직 연 논문이 없어요</li>}
-        </ul>
+        <PaperList
+          papers={papers}
+          folders={folders}
+          onFolders={saveFolders}
+          activeId={view === 'doc' ? doc?.id ?? null : null}
+          onOpen={id => void open(id, false)}
+          onRemove={id => void remove(id)}
+        />
         <UpdateButton />
         <div className="side-foot">
           <ThemeButton />

@@ -17,6 +17,9 @@ export type Doc = { id: string; title: string; source: string; blocks: Block[]; 
 
 export type Meta = { id: string; title: string; source: string; addedAt: number; units: number }
 
+/** A sidebar folder; `papers` are paper ids in order, and the first one stays visible when folded. */
+export type Folder = { id: string; name: string; papers: string[]; open: boolean }
+
 export type Status = {
   total: number
   done: number
@@ -44,6 +47,8 @@ export const api = {
   list: () => invoke<Meta[]>('library_list'),
   get: (id: string) => invoke<Doc>('library_get', { id }),
   remove: (id: string) => invoke<void>('library_remove', { id }),
+  folders: () => invoke<Folder[]>('library_folders'),
+  setFolders: (folders: Folder[]) => invoke<Folder[]>('library_set_folders', { folders }),
   openArxiv: (input: string) => invoke<Meta>('open_arxiv', { input }),
   search: (query: string, start: number) => invoke<SearchPage>('arxiv_search', { query, start }),
   claude: () => invoke<{ installed: boolean; loggedIn: boolean; path: string | null }>('claude_status'),

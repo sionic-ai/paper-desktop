@@ -123,7 +123,9 @@ button:disabled { cursor: default; opacity: .5; }
   color: var(--text-2);
 }
 .pdf-btn:hover:not(:disabled) { color: var(--text); border-color: var(--line-2); }
-.list-label { margin: 18px 4px 6px; font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .04em; }
+.list-label { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 6px 4px; font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .04em; }
+.new-folder { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--muted); }
+.new-folder:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
 .papers { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
 .papers li { position: relative; border-radius: 7px; }
 .papers li:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
@@ -135,6 +137,29 @@ button:disabled { cursor: default; opacity: .5; }
 .papers li:hover .x, .x:focus-visible { opacity: 1; }
 .x:hover { background: color-mix(in srgb, var(--text) 10%, transparent); }
 .empty { color: var(--muted); font-size: 13px; padding: 6px 8px; }
+/* Folders */
+.papers.dragging, .papers.dragging * { cursor: grabbing; user-select: none; }
+.papers li.folder:hover { background: none; }
+.folder-head { position: relative; border-radius: 7px; }
+.folder-head:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+.folder-head.over, .papers li.over, .drop-new.over { background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+.papers li.over:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.folder-head:hover .x { opacity: 1; }
+.folder-toggle { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 28px 6px 4px; border: 0; background: none; text-align: left; font-size: 13px; color: var(--text-2); }
+.folder-toggle .caret { width: 10px; color: var(--muted); font-size: 13px; line-height: 1; transition: transform .15s; }
+.folder-toggle .caret.open { transform: rotate(90deg); }
+.folder-icon { flex: none; color: var(--muted); }
+.folder-toggle .name { flex: 1; min-width: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.folder-toggle .count { font-size: 11px; color: var(--muted); }
+.folder-name { width: calc(100% - 28px); margin: 3px 0 3px 4px; padding: 3px 6px; border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line)); border-radius: 5px; background: var(--paper); color: var(--text); font: inherit; font-size: 13px; outline: none; }
+.folder-papers { list-style: none; margin: 0 0 8px 9px; padding: 0 0 0 10px; border-left: 1px solid var(--line-2); }
+.paper .src .others { color: var(--muted); }
+.folder-papers li.rep .paper .t { -webkit-line-clamp: 1; }
+.folder-empty { color: var(--muted); font-size: 12px; padding: 5px 8px; }
+.papers li.dragged { opacity: .4; }
+.drop-new { display: flex; align-items: center; gap: 6px; margin: 2px 0 4px; padding: 7px 8px; border: 1px dashed var(--line-2); border-radius: 7px; font-size: 12.5px; color: var(--muted); }
+.papers.over-loose { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 7px; }
+.drag-ghost { position: fixed; z-index: 50; max-width: 220px; padding: 5px 9px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); box-shadow: 0 6px 18px color-mix(in srgb, var(--text) 14%, transparent); font-size: 12.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 
 /* Main */
 .main { overflow-y: auto; min-width: 0; position: relative; }
