@@ -51,7 +51,8 @@ curl -fsSL https://raw.githubusercontent.com/sionic-ai/paper-desktop/main/instal
 - **다크 모드**: 사이드바 왼쪽 아래의 달/해 아이콘으로 라이트와 다크를 바꿉니다. 처음에는 macOS 설정을 따르고, 고른 뒤에는 그 선택이 남습니다
 - **폴더**: `내 논문`에서 논문을 끌어 다른 논문 위에 놓으면 둘이 새 폴더로 묶입니다. 폴더 이름 줄이나 폴더 안 논문 위에 놓으면 그 폴더에 들어가고, 목록 빈 곳에 놓으면 폴더에서 빠집니다. 폴더를 접으면 맨 앞 논문 하나만 대표로 보이며, 대표를 바꾸려면 다른 논문을 맨 앞에 끌어 놓으면 됩니다. 이름 줄을 두 번 누르면 이름을 바꿀 수 있고, 폴더를 지워도 논문은 남습니다. 폴더는 `folders.json`에 저장됩니다
 - **사이드바**: 오른쪽 가장자리를 끌어 너비를 조절하고, 상단 아이콘이나 `⌘B`로 접고 펼칩니다. 아주 좁게 끌어도 접힙니다. 너비와 상태는 다음 실행에도 남습니다
-- **물어보기**: 오른쪽 아래 떠 있는 ✦ 버튼을 누르고 질문을 적어 Enter를 치면 대화창이 열리고, Claude가 열린 논문을 근거로 답합니다. 첫 글자가 나오기 전까지는 Claude Code처럼 `✻ 생각하는 중…` 상태가 보이고, 답은 쓰이는 대로 바로 흘러나옵니다. 본문을 드래그하면 작은 입력창이 떠서 질문을 적고 Enter(또는 ↵ 버튼)로 그 부분과 함께 보낼 수 있습니다. 입력하거나 스크롤해도 고른 부분은 표시된 채 남습니다
+- **요약하기**: 번역이 끝나면 상단에 `✦ 요약하기`가 생깁니다. 누르면 대화창이 평소보다 넓게 열리고, Claude가 논문을 한국어 글 한 편으로 정리합니다. 질문형 도입과 `결론부터 말하면`으로 시작해 `1. 핵심 주장 (영어 원어)` 절마다 `문제·해결책·결과` 불릿과 논문의 실제 수치를 담고 `마치며:`로 끝납니다. 요약은 `<id>.summary.json`에 저장되어 다음부터는 바로 뜨며, 글 아래 `다시 요약`으로 새로 쓸 수 있습니다
+- **물어보기**: 오른쪽 아래 떠 있는 ✦ 버튼을 누르고 질문을 적어 Enter를 치면 대화창이 열리고, Claude가 열린 논문을 근거로 답합니다. 첫 글자가 나오기 전까지는 Claude Code처럼 `✻ 생각하는 중…` 상태가 보이고, 답은 쓰이는 대로 바로 흘러나옵니다. 본문을 드래그하면 작은 입력창이 떠서 질문을 적고 Enter(또는 ↵ 버튼)로 그 부분과 함께 보낼 수 있습니다. 입력하거나 스크롤해도 고른 부분은 표시된 채 남습니다. 대화창 왼쪽·위 가장자리나 왼쪽 위 모서리를 끌면 크기를 바꿀 수 있고(바꾼 크기는 기억), 두 번 누르면 기본 크기로 돌아갑니다
 - **업데이트**: 새 릴리스가 나오면 왼쪽 칸 맨 아래에 파란 `업데이트` 버튼이 뜹니다. 누르면 설치 스크립트로 새 버전을 받아 교체하고 다시 엽니다
 - **저장**: 논문과 번역은 `~/Library/Application Support/dev.rlaope.nanran/papers/`에만 저장됩니다
 
@@ -90,6 +91,7 @@ cargo run --release --features probe --bin nanran-probe -- search 'flash attenti
 cargo run --release --features probe --bin nanran-probe -- ask 'KV 캐시 압축 논문 추천해줘' # AI 추천
 cargo run --release --features probe --bin nanran-probe -- update                  # 최신 릴리스 확인
 cargo run --release --features probe --bin nanran-probe -- askpaper arxiv-1706.03762 '핵심이 뭐야?' # 논문에 질문
+cargo run --release --features probe --bin nanran-probe -- summary arxiv-1706.03762 /tmp/lib-copy # 요약 글 (라이브러리 사본에 저장)
 cargo run --release --features probe --bin nanran-probe -- parse 1706.03762        # 블록 통계
 cargo run --release --features probe --bin nanran-probe -- dump paper.pdf          # 블록별 한 줄 출력
 cargo run --release --features probe --bin nanran-probe -- translate 1706.03762 6  # 앞 6개 문단 번역
