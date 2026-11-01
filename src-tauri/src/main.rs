@@ -31,6 +31,7 @@ fn main() {
             nanran::commands::update_check,
             nanran::commands::update_install,
             nanran::commands::ask_claude,
+            nanran::commands::summarize_paper,
         ])
         .build(tauri::generate_context!())
         .expect("nanran failed to start")

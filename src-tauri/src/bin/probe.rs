@@ -9,6 +9,7 @@
 //! nanran-probe claude -                               show Claude Code install/login state
 //! nanran-probe update                                 compare with the latest GitHub release
 //! nanran-probe askpaper <doc-id> <question> [quote]   ask about a paper in the app's library
+//! nanran-probe summary <doc-id> [dir]               write the Korean summary post (dir: a library copy)
 //! nanran-probe redo <doc-id> <dir>                    retranslate a saved paper in the current style
 //!
 //! Set NANRAN_MODE=easy to run translate/job/import as the easy explanation instead.
@@ -87,6 +88,29 @@ fn main() {
         );
         return;
     }
+    if cmd == "summary" {
+        // A fresh summary, saved into <dir> (a copy of the library) or the app's real library.
+        let dir = match args.get(3) {
+            Some(d) => std::path::PathBuf::from(d),
+            None => std::path::Path::new(&std::env::var_os("HOME").expect("HOME"))
+                .join("Library/Application Support/dev.rlaope.nanran/papers"),
+        };
+        let state = std::sync::Arc::new(nanran::AppState::new(dir).expect("state"));
+        let started = std::time::Instant::now();
+        let mut first: Option<f32> = None;
+        let r = nanran::commands::summarize(&state, target, true, |_| {
+            first.get_or_insert(started.elapsed().as_secs_f32());
+        })
+        .expect("summary");
+        println!(
+            "first {:.1}s, done {:.1}s, {} chars\n{}",
+            first.unwrap_or_default(),
+            started.elapsed().as_secs_f32(),
+            r.reply.chars().count(),
+            r.reply
+        );
+        return;
+    }
     if cmd == "redo" {
         // Retranslates a saved paper in the current style, like the app's 다시 번역 button.
         let dir = std::path::PathBuf::from(&args[3]);
@@ -94,7 +118,8 @@ fn main() {
         let before = nanran::commands::status(&state, target, Mode::Plain);
         println!("outdated before {}", before.outdated);
         let started = std::time::Instant::now();
-        nanran::commands::start_translation(&state, target.to_string(), Mode::Plain, true).expect("start");
+        nanran::commands::start_translation(&state, target.to_string(), Mode::Plain, true)
+            .expect("start");
         loop {
             std::thread::sleep(std::time::Duration::from_secs(3));
             let s = nanran::commands::status(&state, target, Mode::Plain);

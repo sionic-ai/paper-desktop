@@ -84,7 +84,10 @@ pub fn library_folders(state: State<'_, Arc<AppState>>) -> Vec<Folder> {
 }
 
 #[tauri::command]
-pub fn library_set_folders(state: State<'_, Arc<AppState>>, folders: Vec<Folder>) -> Result<Vec<Folder>, String> {
+pub fn library_set_folders(
+    state: State<'_, Arc<AppState>>,
+    folders: Vec<Folder>,
+) -> Result<Vec<Folder>, String> {
     state.library.set_folders(folders)
 }
 
@@ -202,6 +205,56 @@ pub fn ask_paper_stream(
     Ok(AskReply { reply })
 }
 
+#[derive(Serialize)]
+pub struct SummaryReply {
+    pub reply: String,
+    /// True when the summary came from disk instead of a new Claude call.
+    pub saved: bool,
+}
+
+/// A Korean explainer post about a saved paper. Returns the saved one unless `fresh`;
+/// a new one streams over `on_event` and is saved when done.
+#[tauri::command]
+pub async fn summarize_paper(
+    state: State<'_, Arc<AppState>>,
+    doc_id: String,
+    fresh: bool,
+    on_event: tauri::ipc::Channel<AskEvent>,
+) -> Result<SummaryReply, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        summarize(&state, &doc_id, fresh, |d| {
+            let _ = on_event.send(AskEvent::Delta {
+                text: d.to_string(),
+            });
+        })
+    })
+    .await
+}
+
+pub fn summarize(
+    state: &Arc<AppState>,
+    doc_id: &str,
+    fresh: bool,
+    on_delta: impl FnMut(&str),
+) -> Result<SummaryReply, String> {
+    if !fresh {
+        if let Some(reply) = state.library.summary(doc_id) {
+            return Ok(SummaryReply { reply, saved: true });
+        }
+    }
+    let doc = state
+        .library
+        .doc(doc_id)
+        .map_err(|_| "논문을 찾지 못했어요".to_string())?;
+    let reply = ask::summarize_stream(&doc, on_delta)?;
+    state.library.set_summary(doc_id, &reply)?;
+    Ok(SummaryReply {
+        reply,
+        saved: false,
+    })
+}
+
 /// Current version and the newest GitHub release. Network errors mean "no update known".
 #[tauri::command]
 pub async fn update_check() -> Result<update::UpdateInfo, String> {
@@ -273,7 +326,11 @@ pub fn translation_cancel(state: State<'_, Arc<AppState>>, id: String, mode: Mod
 
 /// Translates every unit that has no saved translation yet.
 #[tauri::command]
-pub fn translation_start(state: State<'_, Arc<AppState>>, id: String, mode: Mode) -> Result<(), String> {
+pub fn translation_start(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+    mode: Mode,
+) -> Result<(), String> {
     start_translation(state.inner(), id, mode, false)
 }
 
@@ -284,7 +341,11 @@ pub fn translation_redo(state: State<'_, Arc<AppState>>, id: String) -> Result<(
 }
 
 #[tauri::command]
-pub fn translation_status(state: State<'_, Arc<AppState>>, id: String, mode: Mode) -> Result<Status, String> {
+pub fn translation_status(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+    mode: Mode,
+) -> Result<Status, String> {
     Ok(status(state.inner(), &id, mode))
 }
 
@@ -299,12 +360,19 @@ pub fn status(state: &Arc<AppState>, id: &str, mode: Mode) -> Status {
         error: job.and_then(|j| j.error.clone()),
         redo: job.is_some_and(|j| j.running && j.redo),
         // Only the plain translation has older styles; easy explanations started at the current one.
-        outdated: mode == Mode::Plain && !units.is_empty() && state.library.style(id) < translate::STYLE,
+        outdated: mode == Mode::Plain
+            && !units.is_empty()
+            && state.library.style(id) < translate::STYLE,
         units,
     }
 }
 
-pub fn start_translation(state: &Arc<AppState>, id: String, mode: Mode, redo: bool) -> Result<(), String> {
+pub fn start_translation(
+    state: &Arc<AppState>,
+    id: String,
+    mode: Mode,
+    redo: bool,
+) -> Result<(), String> {
     let claude = translate::find_claude().ok_or_else(|| {
         "Claude Code CLI를 찾지 못했어요. 설치 후 터미널에서 `claude`로 로그인해 주세요".to_string()
     })?;
@@ -359,10 +427,14 @@ pub fn start_translation(state: &Arc<AppState>, id: String, mode: Mode, redo: bo
                         let Some(batch) = queue.lock().unwrap().next() else {
                             return;
                         };
-                        match translate::translate_batch(&claude, &doc.title, &batch, &headings, mode, &cancel) {
+                        match translate::translate_batch(
+                            &claude, &doc.title, &batch, &headings, mode, &cancel,
+                        ) {
                             Ok(units) => {
                                 let _ = state.library.add_translations(&id, mode, &units);
-                                if let Some(job) = state.jobs.lock().unwrap().get_mut(&(id.clone(), mode)) {
+                                if let Some(job) =
+                                    state.jobs.lock().unwrap().get_mut(&(id.clone(), mode))
+                                {
                                     job.done += batch.len();
                                 }
                             }

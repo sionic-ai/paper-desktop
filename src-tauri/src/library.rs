@@ -42,7 +42,11 @@ fn clean_folders(folders: Vec<Folder>) -> Vec<Folder> {
         .map(|f| {
             let name: String = f.name.trim().chars().take(60).collect();
             Folder {
-                name: if name.is_empty() { "새 폴더".into() } else { name },
+                name: if name.is_empty() {
+                    "새 폴더".into()
+                } else {
+                    name
+                },
                 papers: f
                     .papers
                     .into_iter()
@@ -160,7 +164,10 @@ impl Library {
         for u in units {
             all.insert(u.id, u.sentences.clone());
         }
-        write_atomic(&self.path(id, suffix(mode))?, &serde_json::to_vec(&all).unwrap())
+        write_atomic(
+            &self.path(id, suffix(mode))?,
+            &serde_json::to_vec(&all).unwrap(),
+        )
     }
 
     /// Writing-style version of the saved translations (see `translate::STYLE`); 1 when unrecorded.
@@ -176,9 +183,24 @@ impl Library {
         write_atomic(&self.path(id, "style")?, style.to_string().as_bytes())
     }
 
+    /// The saved Korean summary post (`<id>.summary.json`), if one was made.
+    pub fn summary(&self, id: &str) -> Option<String> {
+        let bytes = std::fs::read(self.path(id, "summary").ok()?).ok()?;
+        serde_json::from_slice::<String>(&bytes)
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+    }
+
+    pub fn set_summary(&self, id: &str, text: &str) -> Result<(), String> {
+        write_atomic(
+            &self.path(id, "summary")?,
+            &serde_json::to_vec(text).unwrap(),
+        )
+    }
+
     pub fn remove(&self, id: &str) -> Result<(), String> {
         let _guard = self.write.lock().unwrap();
-        for suffix in ["doc", "meta", "ko", "easy", "style"] {
+        for suffix in ["doc", "meta", "ko", "easy", "style", "summary"] {
             let _ = std::fs::remove_file(self.path(id, suffix)?);
         }
         let mut folders = self.folders();
@@ -261,7 +283,11 @@ mod tests {
             open: false,
         };
         let kept = lib
-            .set_folders(vec![f("a", &["pdf-abc", "x"]), f("b", &["pdf-abc", "../y"]), f("a", &[])])
+            .set_folders(vec![
+                f("a", &["pdf-abc", "x"]),
+                f("b", &["pdf-abc", "../y"]),
+                f("a", &[]),
+            ])
             .unwrap();
         assert_eq!(kept.len(), 2);
         assert_eq!(kept[0].name, "a");
